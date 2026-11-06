@@ -5,7 +5,7 @@
 // app keeps working from the browser's list: the API only adds names the browser might not know.
 // Offsets and daylight saving are always computed by the browser, never taken from the API.
 
-import { COMMON_ZONES, allZones, browserZone, cityOf, isFriendlyZone, tzLabel, tzOffsetMinutes, zoneName } from './time';
+import { COMMON_ZONES, allZones, browserZone, cityOf, gmtLabel, isFriendlyZone, tzLabel, tzOffsetMinutes, zoneName } from './time';
 
 const CACHE_KEY = 'quickslot-zones-v1';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -70,6 +70,45 @@ export async function refreshZonesIfStale(): Promise<boolean> {
     /* ignore */
   }
   return false;
+}
+
+// ------------------------------------------------------------ city lookup
+// The browser only knows ~400 reference cities. When nothing local matches what was typed, ask a
+// free, key-less geocoding service (Open-Meteo) which time zone that city is in. Only the typed
+// text is sent. The zone it returns is checked against the browser's own database before use.
+export const CITY_LOOKUP_HOST = 'open-meteo.com';
+const lookupCache = new Map<string, ZoneOption[]>();
+
+interface GeoResult {
+  name?: string;
+  admin1?: string;
+  country?: string;
+  timezone?: string;
+}
+
+export async function lookupCity(query: string, signal?: AbortSignal): Promise<ZoneOption[]> {
+  const q = query.trim();
+  if (q.length < 3) return [];
+  const key = norm(q);
+  const hit = lookupCache.get(key);
+  if (hit) return hit;
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=en&format=json`;
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error('lookup failed');
+  const data = (await res.json()) as { results?: GeoResult[] };
+  const seen = new Set<string>();
+  const out: ZoneOption[] = [];
+  for (const r of data.results ?? []) {
+    if (!r.name || !r.timezone || !isValidZone(r.timezone)) continue;
+    const place = [r.name, r.admin1, r.country].filter((p, i, a) => p && a.indexOf(p) === i).join(', ');
+    const label = `${place} (${gmtLabel(r.timezone)})`;
+    if (seen.has(label)) continue;
+    seen.add(label);
+    out.push({ tz: r.timezone, label });
+    if (out.length >= 6) break;
+  }
+  lookupCache.set(key, out);
+  return out;
 }
 
 // ------------------------------------------------------------------ search

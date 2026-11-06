@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Globe } from '@phosphor-icons/react';
 import { tzLabel } from '../lib/time';
-import { refreshZonesIfStale, searchZones } from '../lib/zones';
+import { CITY_LOOKUP_HOST, lookupCity, refreshZonesIfStale, searchZones, type ZoneOption } from '../lib/zones';
 
 interface Props {
   id: string;
@@ -26,7 +26,37 @@ export function ZoneCombobox({ id, value, onChange, placeholder = 'City or time 
     void refreshZonesIfStale();
   }, []);
 
-  const options = useMemo(() => searchZones(query ?? ''), [query]);
+  const local = useMemo(() => searchZones(query ?? ''), [query]);
+
+  // Nothing local matched: look the city up online (after a short pause, one request at a time).
+  const [remote, setRemote] = useState<{ q: string; options: ZoneOption[] } | null>(null);
+  const [lookup, setLookup] = useState<'idle' | 'loading' | 'failed'>('idle');
+  const typed = (query ?? '').trim();
+  useEffect(() => {
+    if (!open || local.length > 0 || typed.length < 3) {
+      setLookup('idle');
+      return;
+    }
+    const ctl = new AbortController();
+    setLookup('loading');
+    const timer = setTimeout(() => {
+      lookupCity(typed, ctl.signal)
+        .then((options) => {
+          setRemote({ q: typed, options });
+          setLookup('idle');
+        })
+        .catch((e) => {
+          if (!ctl.signal.aborted && !(e instanceof DOMException && e.name === 'AbortError')) setLookup('failed');
+        });
+    }, 350);
+    return () => {
+      clearTimeout(timer);
+      ctl.abort();
+    };
+  }, [typed, local.length, open]);
+
+  const options = local.length > 0 ? local : remote && remote.q === typed ? remote.options : [];
+  const searchingOnline = local.length === 0 && typed.length >= 3;
   const shown = query ?? (value ? tzLabel(value) : '');
 
   function choose(tz: string) {
@@ -95,7 +125,15 @@ export function ZoneCombobox({ id, value, onChange, placeholder = 'City or time 
       {open && (
         <ul className="combo-list" id={listId} role="listbox">
           {options.length === 0 ? (
-            <li className="combo-empty">No match</li>
+            <li className="combo-empty">
+              {typed.length < 3
+                ? 'No match'
+                : lookup === 'loading'
+                  ? 'Searching cities...'
+                  : lookup === 'failed'
+                    ? 'No match, and the city search is not reachable right now.'
+                    : 'No match'}
+            </li>
           ) : (
             options.map((o, i) => (
               <li
@@ -111,6 +149,11 @@ export function ZoneCombobox({ id, value, onChange, placeholder = 'City or time 
                 {o.label}
               </li>
             ))
+          )}
+          {searchingOnline && (
+            <li className="combo-note" aria-hidden="true">
+              City search by {CITY_LOOKUP_HOST}. Only what you typed is sent.
+            </li>
           )}
         </ul>
       )}
