@@ -1,0 +1,32 @@
+import * as T from '../src/lib/time.ts';
+let f = 0;
+const eq = (n, a, b) => { const ok = JSON.stringify(a) === JSON.stringify(b); if (!ok) f++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : ` got ${JSON.stringify(a)} want ${JSON.stringify(b)}`)); };
+const iso = (ts) => new Date(ts).toISOString();
+eq('NY Nov 5 9am = 14:00Z (EST)', iso(T.zonedToUtc(2026, 11, 5, 9, 0, 'America/New_York')), '2026-11-05T14:00:00.000Z');
+eq('NY Oct 30 9am = 13:00Z (EDT)', iso(T.zonedToUtc(2026, 10, 30, 9, 0, 'America/New_York')), '2026-10-30T13:00:00.000Z');
+eq('LA Nov 5 9am = 17:00Z', iso(T.zonedToUtc(2026, 11, 5, 9, 0, 'America/Los_Angeles')), '2026-11-05T17:00:00.000Z');
+eq('Kolkata 9am = 03:30Z', iso(T.zonedToUtc(2026, 11, 5, 9, 0, 'Asia/Kolkata')), '2026-11-05T03:30:00.000Z');
+eq('Kathmandu 9am = 03:15Z', iso(T.zonedToUtc(2026, 11, 5, 9, 0, 'Asia/Kathmandu')), '2026-11-05T03:15:00.000Z');
+eq('Sao Paulo 9am = 12:00Z', iso(T.zonedToUtc(2026, 11, 5, 9, 0, 'America/Sao_Paulo')), '2026-11-05T12:00:00.000Z');
+const ts = Date.parse('2026-11-05T21:13:00Z');
+eq('parts LA', (({ y, m, d, h, mi }) => [y, m, d, h, mi])(T.partsInZone(ts, 'America/Los_Angeles')), [2026, 11, 5, 13, 13]);
+eq('offset LA', T.tzOffsetMinutes(ts, 'America/Los_Angeles'), -480);
+eq('offset Kathmandu', T.tzOffsetMinutes(ts, 'Asia/Kathmandu'), 345);
+eq('monday of Thu Nov 5', T.mondayOf({ y: 2026, m: 11, d: 5 }), { y: 2026, m: 11, d: 2 });
+eq('monday of Sun Nov 8', T.mondayOf({ y: 2026, m: 11, d: 8 }), { y: 2026, m: 11, d: 2 });
+eq('addDays month roll', T.addDays({ y: 2026, m: 11, d: 28 }, 5), { y: 2026, m: 12, d: 3 });
+eq('merge slots', T.mergeSlots([0, 900000, 1800000, 3600000]).map((r) => [r.start, r.end]), [[0, 2700000], [3600000, 4500000]]);
+eq('rangeLabel same meridiem', T.rangeLabel(T.zonedToUtc(2026, 11, 5, 9, 0, 'UTC'), T.zonedToUtc(2026, 11, 5, 11, 30, 'UTC'), 'UTC'), '9:00\u201311:30 AM');
+eq('rangeLabel crossing noon', T.rangeLabel(T.zonedToUtc(2026, 11, 5, 11, 0, 'UTC'), T.zonedToUtc(2026, 11, 5, 13, 0, 'UTC'), 'UTC'), '11:00 AM\u20131:00 PM');
+eq('gmt label', T.gmtLabel('America/Los_Angeles', ts), 'GMT-8');
+eq('gmt label half', T.gmtLabel('Asia/Kolkata', ts), 'GMT+5:30');
+const slots = [T.zonedToUtc(2026, 11, 6, 12, 30, 'America/Los_Angeles'), T.zonedToUtc(2026, 11, 6, 12, 45, 'America/Los_Angeles'), T.zonedToUtc(2026, 11, 6, 13, 0, 'America/Los_Angeles'), T.zonedToUtc(2026, 11, 6, 13, 15, 'America/Los_Angeles'), T.zonedToUtc(2026, 11, 7, 9, 0, 'America/Los_Angeles')];
+// the Saturday slot (Nov 7) is left out: weekdays only
+eq('summary skips weekends', T.summaryText(slots, 'America/Los_Angeles', 0), 'Availability (times in US Pacific Time (GMT-8))\nFri, Nov 6: 12:30\u20131:30 PM');
+eq('isWeekend', [T.isWeekend(slots[0], 'America/Los_Angeles'), T.isWeekend(slots[4], 'America/Los_Angeles')], [false, true]);
+eq('slotInstantFor row 0 = 6am', iso(T.slotInstantFor({ y: 2026, m: 11, d: 5 }, 0, 'UTC')), '2026-11-05T06:00:00.000Z');
+eq('slotInstantFor row 59 = 8:45pm', iso(T.slotInstantFor({ y: 2026, m: 11, d: 5 }, 59, 'UTC')), '2026-11-05T20:45:00.000Z');
+eq('slotInstantFor row 1 = 6:15am', iso(T.slotInstantFor({ y: 2026, m: 11, d: 5 }, 1, 'UTC')), '2026-11-05T06:15:00.000Z');
+console.log(f ? `${f} FAILED` : 'all ok');
+process.exit(f ? 1 : 0);
+
