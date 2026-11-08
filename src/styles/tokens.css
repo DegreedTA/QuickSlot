@@ -1,0 +1,77 @@
+/* Degreed design system tokens (from tokens.json). Do not edit values here without updating the source. */
+:root {
+  /* brand */
+  --color-true-blue: #0062e3;
+  --color-true-blue-600: #004fb8;
+  --color-true-blue-050: #e6f0fd;
+  --color-moonshot: #0f1f2c;
+  --color-fry-sauce: #ff7f64;
+  --color-gold-medal: #fed141;
+  --color-deep-blue: #0026ee;
+  --color-sky: #8fceee;
+  --color-white: #ffffff;
+  --color-cloud: #f4f6f9;
+  --color-mist: #e4e9f0;
+  --color-slate: #5a6b7b;
+  /* semantic */
+  --text-strong: #0f1f2c;
+  --text-body: #2a3742;
+  --text-muted: #5a6b7b;
+  --text-link: #0062e3;
+  --text-on-dark: #ffffff;
+  --text-on-dark-muted: rgba(255, 255, 255, 0.72);
+  --surface-page: #ffffff;
+  --surface-card: #ffffff;
+  --surface-sunken: #f4f6f9;
+  --border-light: #e4e9f0;
+  --focus-ring: #0026ee;
+  /* type */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --fs-h1: 40px;
+  --fs-h2: 32px;
+  --fs-h3: 24px;
+  --fs-title: 20px;
+  --fs-body-lg: 18px;
+  --fs-body: 16px;
+  --fs-table: 15px;
+  --fs-body-sm: 14px;
+  --fs-caption: 13px;
+  --fs-label: 12px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-extrabold: 800;
+  --lh-snug: 1.15;
+  --lh-normal: 1.5;
+  --ls-display: -0.02em;
+  --ls-tight: -0.01em;
+  /* spacing (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  /* radii */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+  /* shadows */
+  --shadow-sm: 0 2px 6px rgba(15, 31, 44, 0.08);
+  --shadow-md: 0 8px 24px rgba(15, 31, 44, 0.1);
+  --shadow-lg: 0 20px 48px rgba(15, 31, 44, 0.14);
+  --shadow-blue: 0 12px 32px rgba(0, 98, 227, 0.28);
+  /* QuickSlot calendar marks (hex precomputed; do not use color-mix) */
+  --qs-avail-bg: #c1e4f6; /* Sky 55% on white */
+  --qs-avail-edge: rgba(0, 98, 227, 0.8);
+  --qs-pick-bg: #ffd6cd; /* Fry Sauce 32% on white */
+  --qs-pick-edge: rgba(255, 127, 100, 0.9);
+}

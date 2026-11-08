@@ -241,6 +241,24 @@ begin
           jsonb_array_length(l.suggested_slots) as suggested_count,
           cardinality(l.ranked_choices) as ranked_count,
           l.timezone,
+          -- Dashboard status "No/Few valid times this week": only for active links the candidate
+          -- has answered and the recruiter has seen, and only the next 8 days (enough for Mon-Fri
+          -- of this week, or of next week when it is the weekend). Empty otherwise to keep this small.
+          case when l.active and l.expires_at > now()
+                 and cardinality(l.slots) + cardinality(l.ranked_choices) > 0
+                 and l.updated_at <= coalesce(l.recruiter_viewed_at, '-infinity'::timestamptz)
+               then coalesce((select jsonb_agg(t order by t) from unnest(l.slots) t
+                               where t > now() and t < now() + interval '8 days'), '[]'::jsonb)
+               else '[]'::jsonb end as upcoming_slots,
+          case when l.active and l.expires_at > now()
+                 and cardinality(l.slots) + cardinality(l.ranked_choices) > 0
+                 and l.updated_at <= coalesce(l.recruiter_viewed_at, '-infinity'::timestamptz)
+               then coalesce((select jsonb_agg(sg order by (sg->>'start')::timestamptz)
+                                from jsonb_array_elements(l.suggested_slots) sg
+                               where (sg->>'start')::timestamptz = any (l.ranked_choices)
+                                 and (sg->>'start')::timestamptz > now()
+                                 and (sg->>'start')::timestamptz < now() + interval '8 days'), '[]'::jsonb)
+               else '[]'::jsonb end as upcoming_picks,
           greatest(l.updated_at, l.created_at) as sort_at
         from public.links l
         order by sort_at desc

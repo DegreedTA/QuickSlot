@@ -1,38 +1,27 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
-import { LinkSimple, SignOut } from '@phosphor-icons/react';
 import { BrandMark } from './Brand';
 import { useSession } from '../lib/session';
 import { ApiError } from '../lib/types';
 import { isDemo } from '../lib/api';
 import { DEMO_PASSCODE } from '../lib/demoApi';
+import { Badge, Button } from './ui';
 
-/** Shows the passcode screen until a recruiter signs in, then the rail + content. */
+/** Shows the passcode screen until a recruiter signs in, then the top bar + content. */
 export function ManagerShell({ children }: { children: ReactNode }) {
   const { passcode, signOut } = useSession();
   if (!passcode) return <Login />;
   return (
-    <div className="shell">
-      <aside className="rail" aria-label="QuickSlot">
-        <a className="brand" href="/">
-          <BrandMark size={28} />
-          QuickSlot
-        </a>
-        <nav className="nav" aria-label="Main">
-          <NavLink to="/" end>
-            <LinkSimple size={18} aria-hidden />
-            Links
-          </NavLink>
-        </nav>
-        <div className="rail-foot">
-          {isDemo && <p className="rail-note">Demo mode</p>}
-          <button type="button" onClick={signOut}>
-            <SignOut size={18} aria-hidden />
-            Sign out
-          </button>
+    <div className="app">
+      <header className="topbar">
+        <div className="topbar-brand">
+          <a href="/">QuickSlot</a>
+          {isDemo && <Badge>Demo mode</Badge>}
         </div>
-      </aside>
-      <main className="main" id="main">
+        <Button variant="ghost" size="sm" onClick={signOut}>
+          Sign out
+        </Button>
+      </header>
+      <main className="app-main" id="main">
         {children}
       </main>
     </div>
@@ -78,7 +67,7 @@ function Login() {
           QuickSlot
         </span>
         <div>
-          <h1 style={{ color: '#fff', fontSize: 'var(--t-2xl)', marginBottom: 12 }}>Interview availability, in one link.</h1>
+          <h1 style={{ color: 'var(--text-on-dark)', fontSize: 'var(--t-2xl)', marginBottom: 12 }}>Interview availability, in one link.</h1>
         </div>
       </div>
       <main className="gate-main" id="main">

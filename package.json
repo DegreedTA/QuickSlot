@@ -11,7 +11,7 @@
     "test": "node tests/time.test.mjs && node tests/sql.test.mjs"
   },
   "dependencies": {
-    "@fontsource-variable/hanken-grotesk": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
     "@phosphor-icons/react": "^2.1.10",
     "@supabase/supabase-js": "^2.119.0",
     "react": "^19.2.0",
