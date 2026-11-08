@@ -32,6 +32,10 @@ export interface LinkRow {
   suggested_count: number;
   ranked_count: number;
   timezone: string;
+  /** Next 8 days only; filled only for active, answered, already-seen links (empty otherwise). */
+  upcoming_slots: string[];
+  /** The candidate's ranked picks in the next 8 days, with their length. Same conditions as above. */
+  upcoming_picks: SuggestedSlot[];
 }
 
 export interface Overview {

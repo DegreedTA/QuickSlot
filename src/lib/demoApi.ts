@@ -9,10 +9,10 @@ import {
   type Overview,
   type SuggestedSlot,
 } from './types';
-import { SLOT_MS, zonedToUtc, addDays, todayIn } from './time';
+import { SLOT_MS, zonedToUtc, addDays, todayIn, mondayOf, calDiffDays } from './time';
 
 export const DEMO_PASSCODE = 'demo-passcode';
-const KEY = 'quickslot-demo-v2';
+const KEY = 'quickslot-demo-v3';
 const DAY = 86400000;
 
 interface Row {
@@ -81,28 +81,73 @@ function seed(): Store {
     return d;
   };
   const sg = [1, 2, 3].map((n) => ({ start: new Date(at(wd(n), 10)).toISOString(), minutes: 45 }));
+  // Days inside the dashboard's "this week" window (see weekWindow), so each status shows in the demo.
+  const mon = mondayOf(t0);
+  const dow = new Date(Date.UTC(t0.y, t0.m - 1, t0.d)).getUTCDay();
+  const winMon = dow === 0 || dow === 6 ? addDays(mon, 7) : mon;
+  const fri = calDiffDays(t0, addDays(winMon, 4));
+  const nextMon = calDiffDays(t0, addDays(winMon, 7));
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  const seenAt = ago(60e3);
   return {
     rows: [
+      // New update: candidate answered, recruiter has not opened it
       mk('Sample: Priya Raman, Product Designer', {
-        updated_at: new Date(now - 2 * 3600e3).toISOString(),
+        updated_at: ago(2 * 3600e3),
         slots: [...run(wd(1), 9, 12), ...run(wd(2), 13, 16.5), ...run(wd(4), 10, 11.5)],
         timezone: 'Asia/Kolkata',
       }),
-      mk('Sample: Tomás Aguirre, Data Engineer', {
+      mk('Sample: Jun Park, QA Lead', {
+        updated_at: ago(5 * 60e3),
+        slots: run(fri, 13, 15),
+        timezone: 'Asia/Seoul',
+      }),
+      // Up to date / Few / No valid times: answered and seen
+      mk('Sample: Omar Haddad, Staff Engineer', {
+        updated_at: ago(26 * 3600e3),
+        recruiter_viewed_at: seenAt,
+        slots: run(fri, 13, 16.5),
+      }),
+      mk('Sample: Lena Fischer, Analyst', {
+        updated_at: ago(2 * DAY),
+        recruiter_viewed_at: seenAt,
+        slots: run(fri, 14, 15),
+      }),
+      mk('Sample: Chidi Okafor, Support Manager', {
+        updated_at: ago(4 * DAY),
+        recruiter_viewed_at: seenAt,
+        slots: run(nextMon, 10, 12),
+      }),
+      // Waiting for picks / availability: candidate never answered
+      mk('Sample: link not opened yet', { created_at: ago(6 * 3600e3), updated_at: ago(6 * 3600e3) }),
+      mk('Sample: Maya Cohen, Designer', {
+        created_at: ago(2 * DAY),
+        updated_at: ago(2 * DAY),
+        suggested_slots: sg,
+        suggested_slots_timezone: tz,
+      }),
+      // a batch of three
+      mk('2146 - Sales Director 1', {
         batch_id: bid,
-        updated_at: new Date(now - 26 * 3600e3).toISOString(),
-        recruiter_viewed_at: new Date(now - 20 * 3600e3).toISOString(),
-        slots: [...run(wd(1), 14, 17), ...run(wd(3), 9, 10.5)],
+        updated_at: ago(26 * 3600e3),
+        recruiter_viewed_at: seenAt,
+        slots: run(fri, 9, 12),
         suggested_slots: sg,
         suggested_slots_timezone: tz,
         ranked_choices: [sg[1].start, sg[0].start],
       }),
-      mk('Sample: Hannah Bergström, Recruiting Coordinator', {
+      mk('2146 - Sales Director 2', {
         batch_id: bid,
+        created_at: ago(3 * DAY),
+        updated_at: ago(3 * DAY),
         suggested_slots: sg,
         suggested_slots_timezone: tz,
       }),
-      mk('Sample: link not opened yet', { created_at: new Date(now - 6 * 3600e3).toISOString(), updated_at: new Date(now - 6 * 3600e3).toISOString() }),
+      mk('2146 - Sales Director 3', {
+        batch_id: bid,
+        created_at: ago(3 * DAY),
+        updated_at: ago(3 * DAY),
+      }),
     ],
   };
 }
@@ -226,6 +271,19 @@ export function createDemoApi(): Api {
           suggested_count: r.suggested_slots.length,
           ranked_count: r.ranked_choices.length,
           timezone: r.timezone,
+          // same conditions as supabase/schema.sql: active, answered, already seen; next 8 days only
+          ...(() => {
+            const now = Date.now();
+            const seen =
+              live(r) &&
+              r.slots.length + r.ranked_choices.length > 0 &&
+              Date.parse(r.updated_at) <= (r.recruiter_viewed_at ? Date.parse(r.recruiter_viewed_at) : -Infinity);
+            const inWin = (iso: string) => Date.parse(iso) > now && Date.parse(iso) < now + 8 * DAY;
+            return {
+              upcoming_slots: seen ? r.slots.filter(inWin).sort() : [],
+              upcoming_picks: seen ? r.suggested_slots.filter((x) => r.ranked_choices.includes(x.start) && inWin(x.start)) : [],
+            };
+          })(),
         }))
         .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
       return delay({ active: links.filter((l) => l.is_active).length, total: links.length, links });

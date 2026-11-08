@@ -108,7 +108,7 @@ function Detail() {
           <h2>Link not found</h2>
         </div>
       )}
-      {state.kind === 'ok' && <DetailBody data={state.data} reload={() => load(false)} />}
+      {state.kind === 'ok' && <DetailBody data={state.data} reload={() => load(false)} reloadSeen={() => load(true)} />}
     </>
   );
 }
@@ -222,10 +222,12 @@ function useSuggestions(data: ManagerLinkData, reload: () => Promise<void>) {
   return { draft, visible, minutes, setMinutes, scope, setScope, status, error, setError, addRange, remove, clearAll };
 }
 
-function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Promise<void> }) {
+function DetailBody({ data, reload, reloadSeen }: { data: ManagerLinkData; reload: () => Promise<void>; reloadSeen: () => Promise<void> }) {
   const { zone, setZone } = useSession();
   const call = useManagerCall();
-  const sug = useSuggestions(data, reload);
+  // After saving suggested times, re-read with markSeen=true (the same call used on open) so the
+  // updated_at bump from the recruiter's own save does not show up as "New update" on the dashboard.
+  const sug = useSuggestions(data, reloadSeen);
   const slots = useMemo(() => new Set(data.slots.map((s) => Date.parse(s))), [data.slots]);
   const slotArray = useMemo(() => [...slots], [slots]);
   const suggestions: Suggestion[] = useMemo(

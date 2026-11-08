@@ -2,7 +2,7 @@ import {
   useEffect, useId, useRef, useState,
   type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type HTMLAttributes,
 } from 'react';
-import { CaretDown, Check, Copy } from '@phosphor-icons/react';
+import { CaretDown, Check, Copy, Minus, Plus } from '@phosphor-icons/react';
 import { copyText } from '../../lib/clipboard';
 
 const cx = (...a: Array<string | false | undefined>) => a.filter(Boolean).join(' ');
@@ -127,4 +127,30 @@ export const STATUSES = {
 export type Status = keyof typeof STATUSES;
 export function StatusChip({ status }: { status: Status }) {
   return <span className={`ds-chip ds-chip-${STATUSES[status]}`}>{status}</span>;
+}
+
+/* Badge: small neutral/brand pill for labels such as "Demo mode" */
+export function Badge({ children }: { children: ReactNode }) {
+  return <span className="ds-badge">{children}</span>;
+}
+
+/* Stepper: pill with - and + around a value */
+export function Stepper({
+  label, value, onChange, min = 1, max = 25,
+}: { label: string; value: number; onChange: (n: number) => void; min?: number; max?: number }) {
+  const id = useId();
+  return (
+    <div className="ds-field">
+      <span className="ds-label" id={id}>{label}</span>
+      <div className="ds-stepper" role="group" aria-labelledby={id}>
+        <button type="button" aria-label={`Fewer ${label.toLowerCase()}`} disabled={value <= min} onClick={() => onChange(Math.max(min, value - 1))}>
+          <Minus weight="bold" aria-hidden />
+        </button>
+        <output aria-live="polite">{value}</output>
+        <button type="button" aria-label={`More ${label.toLowerCase()}`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + 1))}>
+          <Plus weight="bold" aria-hidden />
+        </button>
+      </div>
+    </div>
+  );
 }

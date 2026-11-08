@@ -72,6 +72,16 @@ await q(`select public.set_availability($1, $2::timestamptz[], 'America/New_York
 ov = (await q(`select public.manager_overview($1) as r`, [PW]))[0].r;
 ok('new candidate edit re-flags', ov.links.find((l) => l.token === tokA).has_unseen_change === true);
 
+// overview: upcoming times only for active, answered, seen links
+{
+  const row2 = (await q(`select public.manager_overview($1) as r`, [PW]))[0].r.links.find((l) => l.token === tokA);
+  ok('upcoming_slots empty while change unseen', row2.has_unseen_change && row2.upcoming_slots.length === 0);
+  await q(`select public.manager_get_link($1, $2, true)`, [PW, tokA]);
+  const row3 = (await q(`select public.manager_overview($1) as r`, [PW]))[0].r.links.find((l) => l.token === tokA);
+  ok('upcoming_slots filled once seen, within 8 days', Array.isArray(row3.upcoming_slots) && row3.upcoming_slots.every((t) => Date.parse(t) < Date.now() + 8 * 86400e3 && Date.parse(t) > Date.now()), JSON.stringify(row3.upcoming_slots));
+  ok('upcoming_picks is an array', Array.isArray(row3.upcoming_picks));
+}
+
 // past suggested times are removed automatically and never shown
 {
   const past = new Date(Date.now() - 3600e3).toISOString();

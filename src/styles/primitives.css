@@ -230,3 +230,63 @@
   background: rgba(255, 127, 100, 0.16);
   color: #c7472b;
 }
+
+/* Badge */
+.ds-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #e6f0fd;
+  color: #0062e3;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Stepper: 136x48 outer; the buttons share what is left of the 40px value (border-box, so they are ~46x45) */
+.ds-stepper {
+  display: flex;
+  align-items: stretch;
+  box-sizing: border-box;
+  width: 136px;
+  height: 48px;
+  border: 1.5px solid #e4e9f0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+.ds-stepper button {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0f1f2c;
+  font-size: 20px;
+  cursor: pointer;
+}
+.ds-stepper button:hover:not(:disabled) {
+  background: #f4f6f9;
+}
+.ds-stepper button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ds-stepper button:focus-visible {
+  outline: 3px solid #0026ee;
+  outline-offset: -3px;
+}
+.ds-stepper output {
+  flex: 0 0 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f1f2c;
+}

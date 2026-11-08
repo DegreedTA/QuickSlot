@@ -1,27 +1,32 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, X } from '@phosphor-icons/react';
+import { CaretDown, CaretRight, X } from '@phosphor-icons/react';
 import { ManagerShell } from '../components/ManagerShell';
 import { CopyButton } from '../components/CopyButton';
+import { Button, Card, CopyIconButton, Stepper, StatusChip, TextInput, type Status } from '../components/ui';
 import { useManagerCall } from '../lib/session';
 import { api } from '../lib/api';
-import { ApiError, type CreatedLinks, type LinkRow, type Overview } from '../lib/types';
+import { batchLabel, isWaiting, lastUpdateAt, linkStatus, relativeTime } from '../lib/linkStatus';
+import { browserZone } from '../lib/time';
+import { ApiError, type CreatedLinks, type LinkRow } from '../lib/types';
 
 const candidateUrl = (token: string) => `${window.location.origin}/${token}`;
 
-function relative(iso: string): string {
-  const diff = Date.parse(iso) - Date.now();
-  const abs = Math.abs(diff);
-  const rtf = new Intl.RelativeTimeFormat('en-US', { numeric: 'auto' });
-  if (abs < 60e3) return 'just now';
-  if (abs < 3600e3) return rtf.format(Math.round(diff / 60e3), 'minute');
-  if (abs < 86400e3) return rtf.format(Math.round(diff / 3600e3), 'hour');
-  return rtf.format(Math.round(diff / 86400e3), 'day');
+type Filter = 'all' | 'new' | 'waiting';
+
+interface Item {
+  l: LinkRow;
+  status: Status;
+  at: number;
+  unseen: boolean;
 }
+type Entry =
+  | { kind: 'single'; key: string; at: number; unseen: boolean; item: Item }
+  | { kind: 'batch'; key: string; at: number; unseen: boolean; label: string; size: number; newest: Item; children: Item[] };
 
-type Filter = 'active' | 'expired';
-
-const EXPIRING_SOON_MS = 7 * 86400e3;
+/** Unseen first, then newest update first. */
+const byRecency = (a: { unseen: boolean; at: number }, b: { unseen: boolean; at: number }) =>
+  Number(b.unseen) - Number(a.unseen) || b.at - a.at;
 
 export default function Manager() {
   return (
@@ -34,16 +39,18 @@ export default function Manager() {
 function Links() {
   const call = useManagerCall();
   const navigate = useNavigate();
-  const [data, setData] = useState<Overview | null>(null);
+  const [data, setData] = useState<{ links: LinkRow[]; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<Filter>('active');
+  const [filter, setFilter] = useState<Filter>('all');
   const [created, setCreated] = useState<CreatedLinks | null>(null);
   const [query, setQuery] = useState('');
+  const [open, setOpen] = useState<Set<string>>(new Set());
 
   const reload = useCallback(async () => {
     try {
       setError(null);
-      setData(await call((p) => api.managerOverview(p)));
+      const o = await call((p) => api.managerOverview(p));
+      setData({ links: o.links, total: o.total });
     } catch (e) {
       if (e instanceof ApiError && e.code === 'bad_passcode') return; // signed out; the gate takes over
       setError('Could not load links.');
@@ -51,167 +58,225 @@ function Links() {
   }, [call]);
 
   useEffect(() => {
-    document.title = 'Links | QuickSlot';
+    document.title = 'Manage links | QuickSlot';
     void reload();
   }, [reload]);
 
-  const batchSize = useMemo(() => {
-    const m = new Map<string, number>();
-    data?.links.forEach((l) => l.batch_id && m.set(l.batch_id, (m.get(l.batch_id) ?? 0) + 1));
-    return m;
+  // Every active link with its one status. Recomputed when data arrives.
+  const items = useMemo<Item[]>(() => {
+    const tz = browserZone();
+    const now = Date.now();
+    return (data?.links ?? [])
+      .filter((l) => l.is_active)
+      .map((l) => {
+        const status = linkStatus(l, tz, now);
+        return { l, status, at: lastUpdateAt(l, status), unseen: status === 'New update' };
+      });
   }, [data]);
 
-  const counts = useMemo(() => {
-    const links = data?.links ?? [];
-    return {
-      active: links.filter((l) => l.is_active).length,
-      changed: links.filter((l) => l.is_active && l.has_unseen_change).length,
-      expired: links.filter((l) => !l.is_active).length,
-    };
-  }, [data]);
+  const counts = useMemo(
+    () => ({
+      all: items.length,
+      new: items.filter((i) => i.status === 'New update').length,
+      waiting: items.filter((i) => isWaiting(i.status)).length,
+    }),
+    [items],
+  );
 
-  // newest change first. While searching, every link is searched, active or not.
   const q = query.trim().toLowerCase();
-  const rows = useMemo(() => {
-    const links = (data?.links ?? []).filter((l) =>
-      q ? `${l.label} ${l.token}`.toLowerCase().includes(q) : filter === 'active' ? l.is_active : !l.is_active,
-    );
-    return [...links].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
-  }, [data, filter, q]);
+  const entries = useMemo<Entry[]>(() => {
+    const batchSize = new Map<string, number>();
+    items.forEach((i) => i.l.batch_id && batchSize.set(i.l.batch_id, (batchSize.get(i.l.batch_id) ?? 0) + 1));
+    const all = new Map<string, Item[]>();
+    items.forEach((i) => i.l.batch_id && (batchSize.get(i.l.batch_id) ?? 0) > 1 && all.set(i.l.batch_id, [...(all.get(i.l.batch_id) ?? []), i]));
+
+    const match = (i: Item) =>
+      q
+        ? `${i.l.label} ${i.l.token}`.toLowerCase().includes(q)
+        : filter === 'all' || (filter === 'new' ? i.status === 'New update' : isWaiting(i.status));
+
+    const out: Entry[] = [];
+    const seenBatch = new Set<string>();
+    for (const i of items) {
+      const bid = i.l.batch_id;
+      if (bid && all.has(bid)) {
+        if (seenBatch.has(bid)) continue;
+        seenBatch.add(bid);
+        const children = all.get(bid)!;
+        const shown = children.filter(match).sort(byRecency);
+        if (!shown.length) continue;
+        const newest = [...shown].sort((a, b) => b.at - a.at)[0];
+        out.push({
+          kind: 'batch',
+          key: bid,
+          at: newest.at,
+          unseen: shown.some((c) => c.unseen),
+          label: batchLabel(children.map((c) => c.l.label)),
+          size: children.length,
+          newest,
+          children: shown,
+        });
+      } else if (match(i)) {
+        out.push({ kind: 'single', key: i.l.token, at: i.at, unseen: i.unseen, item: i });
+      }
+    }
+    return out.sort(byRecency);
+  }, [items, filter, q]);
+
+  const toggle = (k: string) =>
+    setOpen((o) => {
+      const n = new Set(o);
+      n.has(k) ? n.delete(k) : n.add(k);
+      return n;
+    });
 
   return (
     <>
-      <div className="page-head">
-        <h1>Links</h1>
+      <h1 className="page-title">Manage links</h1>
+
+      <div>
+        <CreateForm
+          onCreated={(c) => {
+            setCreated(c);
+            void reload();
+          }}
+        />
+        {created && <CreatedList created={created} onDismiss={() => setCreated(null)} />}
       </div>
 
-      <div className="strip" aria-label="Summary">
-        <div>
-          <b>{data?.active ?? '-'}</b>
-          <span>active</span>
-        </div>
-        <div>
-          <b>{data?.total ?? '-'}</b>
-          <span>total</span>
-        </div>
-        <div className={counts.changed ? 'is-change' : undefined}>
-          <b>{data ? counts.changed : '-'}</b>
-          <span>updated</span>
-        </div>
-      </div>
-
-      <CreateForm
-        onCreated={(c) => {
-          setCreated(c);
-          void reload();
-        }}
-      />
-      {created && <CreatedList created={created} onDismiss={() => setCreated(null)} />}
-
-      <div className="toolbar">
-        <div className="tabs" role="tablist" aria-label="Filter links">
+      <div className="filter-row">
+        <div className="filter-buttons" role="group" aria-label="Filter links">
           {(
             [
-              ['active', 'Active'],
-              ['expired', 'Expired'],
+              ['all', 'All'],
+              ['new', 'New'],
+              ['waiting', 'Waiting'],
             ] as [Filter, string][]
-          ).map(([k, label]) => (
-            <button key={k} role="tab" className="tab" aria-selected={!q && filter === k} onClick={() => { setQuery(''); setFilter(k); }}>
-              {label}
-              <span className="count">{counts[k]}</span>
-            </button>
-          ))}
+          ).map(([k, label]) => {
+            const on = !q && filter === k;
+            return (
+              <Button
+                key={k}
+                size="sm"
+                variant={on ? 'primary' : 'secondary'}
+                aria-pressed={on}
+                onClick={() => {
+                  setQuery('');
+                  setFilter(k);
+                }}
+              >
+                {label} · {counts[k]}
+              </Button>
+            );
+          })}
         </div>
-        <SearchBox value={query} onChange={setQuery} onOpen={(t) => navigate(`/${t}/recruiter`)} onEnter={() => rows[0] && navigate(`/${rows[0].token}/recruiter`)} />
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          onOpen={(t) => navigate(`/${t}/recruiter`)}
+          onEnter={() => {
+            const f = entries[0];
+            const first = f && (f.kind === 'single' ? f.item : f.children[0]);
+            if (first) navigate(`/${first.l.token}/recruiter`);
+          }}
+        />
       </div>
 
-      <div className="table-wrap">
+      <Card className="table-card">
         {error ? (
           <div className="empty" role="alert">
             <p>{error}</p>
-            <button className="btn" onClick={reload}>
+            <Button size="sm" variant="secondary" onClick={reload}>
               Try again
-            </button>
+            </Button>
           </div>
         ) : !data ? (
           <SkeletonRows />
-        ) : rows.length === 0 ? (
+        ) : entries.length === 0 ? (
           <div className="empty">
             <h2>{data.total === 0 ? 'No links yet' : q ? 'No links match' : 'Nothing here'}</h2>
             {data.total === 0 && <p>Create one above.</p>}
           </div>
         ) : (
           <table className="links">
-            <thead>
-              <tr>
-                <th scope="col">Link</th>
-                <th scope="col">Status</th>
-                <th scope="col" className="num">
-                  Open time
-                </th>
-                <th scope="col">Last change</th>
-                <th scope="col">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((l) => (
-                <Row key={l.token} l={l} batch={l.batch_id ? batchSize.get(l.batch_id) : undefined} />
-              ))}
-            </tbody>
+              <colgroup>
+                <col style={{ width: 64 }} />
+                <col />
+                <col style={{ width: 252 }} />
+                <col style={{ width: 200 }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">
+                    <span className="sr-only">Copy link</span>
+                  </th>
+                  <th scope="col">Label</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Last update</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((e) =>
+                  e.kind === 'single' ? (
+                    <LinkRowView key={e.key} item={e.item} />
+                  ) : (
+                    <BatchRows key={e.key} e={e} open={open.has(e.key)} onToggle={() => toggle(e.key)} />
+                  ),
+                )}
+              </tbody>
           </table>
         )}
-      </div>
+      </Card>
     </>
   );
 }
 
-function Row({ l, batch }: { l: LinkRow; batch?: number }) {
-  const hours = l.slot_count / 4;
-  const expiresIn = Date.parse(l.expires_at) - Date.now();
-  const name = l.label || 'Untitled link';
+function updateText(i: Item) {
+  return (isWaiting(i.status) ? 'Created ' : '') + relativeTime(i.at).replace(/^Just now$/, isWaiting(i.status) ? 'just now' : 'Just now');
+}
+
+function LinkRowView({ item: i, child }: { item: Item; child?: boolean }) {
+  const name = i.l.label || 'Untitled link';
   return (
-    <tr className={l.is_active && l.has_unseen_change ? 'is-change' : undefined}>
+    <tr className={[i.unseen ? 'is-unseen' : '', child ? 'is-child' : ''].join(' ').trim() || undefined}>
+      <td className="cell-copy">
+        <CopyIconButton text={candidateUrl(i.l.token)} />
+      </td>
       <td>
-        <div className="who">
-          <Link to={`/${l.token}/recruiter`}>{name}</Link>
-          <small className="mono">{l.token}</small>
-        </div>
+        <Link to={`/${i.l.token}/recruiter`} className={`row-link${i.unseen ? ' is-unseen' : ''}${child ? ' is-child' : ''}`}>
+          {name}
+        </Link>
       </td>
-      <td data-label="Status">
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {!l.is_active ? (
-            <span className="tag">Expired</span>
-          ) : (
-            <>
-              {l.has_unseen_change && <span className="tag tag-change">New update</span>}
-              {l.slot_count === 0 && <span className="tag">Candidate hasn't replied</span>}
-              {expiresIn < EXPIRING_SOON_MS && <span className="tag tag-warn">Expiring soon</span>}
-            </>
-          )}
-          {batch && batch > 1 && <span className="tag">Batch of {batch}</span>}
-        </div>
+      <td>
+        <StatusChip status={i.status} />
       </td>
-      <td className="num" data-label="Open time:">
-        {hours > 0 ? `${hours % 1 ? hours.toFixed(1) : hours} h` : <span className="muted">-</span>}
-      </td>
-      <td data-label="Changed" title={new Date(l.updated_at).toLocaleString()}>
-        <span className="muted">{relative(l.updated_at)}</span>
-      </td>
-      <td className="actions-cell">
-        <div className="actions">
-          <CopyButton
-            text={candidateUrl(l.token)}
-            className="btn btn-sm btn-quiet"
-            ariaLabel={`Copy candidate link for ${name}`}
-            doneLabel="Copied"
-          >
-            Copy link
-          </CopyButton>
-        </div>
+      <td className={`cell-when${i.unseen ? ' is-unseen' : ''}`} title={new Date(i.at).toLocaleString()}>
+        {updateText(i)}
       </td>
     </tr>
+  );
+}
+
+function BatchRows({ e, open, onToggle }: { e: Extract<Entry, { kind: 'batch' }>; open: boolean; onToggle: () => void }) {
+  return (
+    <>
+      <tr>
+        <td className="cell-copy">
+          <button type="button" className="chev-toggle" aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} links in ${e.label}`} onClick={onToggle}>
+            {open ? <CaretDown weight="bold" aria-hidden /> : <CaretRight weight="bold" aria-hidden />}
+          </button>
+        </td>
+        <td>
+          <div className="batch-title">{e.label}</div>
+          <div className="batch-sub">Batch of {e.size}</div>
+        </td>
+        <td />
+        <td className={`cell-when${e.unseen ? ' is-unseen' : ''}`} title={new Date(e.newest.at).toLocaleString()}>
+          {updateText(e.newest)}
+        </td>
+      </tr>
+      {open && e.children.map((c) => <LinkRowView key={c.l.token} item={c} child />)}
+    </>
   );
 }
 
@@ -233,17 +298,13 @@ function SkeletonRows() {
 function CreateForm({ onCreated }: { onCreated: (c: CreatedLinks) => void }) {
   const call = useManagerCall();
   const [label, setLabel] = useState('');
-  const [count, setCount] = useState('1');
+  const [count, setCount] = useState(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    const n = Number(count);
-    if (!Number.isInteger(n) || n < 1 || n > 25) {
-      setError('Enter 1 to 25.');
-      return;
-    }
+    const n = count;
     setBusy(true);
     setError(null);
     const trimmed = label.trim();
@@ -252,7 +313,7 @@ function CreateForm({ onCreated }: { onCreated: (c: CreatedLinks) => void }) {
       const res = await call((p) => api.managerCreate(p, n, labels));
       onCreated(res);
       setLabel('');
-      setCount('1');
+      setCount(1);
     } catch (err) {
       if (!(err instanceof ApiError && err.code === 'bad_passcode')) setError('Not created. Try again.');
     } finally {
@@ -261,48 +322,33 @@ function CreateForm({ onCreated }: { onCreated: (c: CreatedLinks) => void }) {
   }
 
   return (
-    <form className="panel panel-pad" onSubmit={submit} noValidate aria-label="Create links">
-      <div className="create">
-        <div className="field">
-          <label htmlFor="new-label">Label</label>
-          <input
-            id="new-label"
-            className="input"
-            value={label}
-            maxLength={120}
-            placeholder="Name or role (only you see it)"
-            onChange={(e) => setLabel(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="new-count">Links</label>
-          <input
-            id="new-count"
-            className="input"
-            inputMode="numeric"
-            value={count}
-            aria-invalid={!!error}
-            onChange={(e) => setCount(e.target.value)}
-          />
-        </div>
-        <button className="btn btn-primary" type="submit" disabled={busy}>
-          <Plus size={16} weight="bold" aria-hidden />
-          {busy ? 'Creating...' : Number(count) > 1 ? 'Create links' : 'Create link'}
-        </button>
-      </div>
+    <Card className="create-card">
+      <form className="create-grid" onSubmit={submit} noValidate aria-label="Create links">
+        <TextInput
+          label="Label"
+          value={label}
+          maxLength={120}
+          placeholder="Candidate name or role (optional)"
+          onChange={(e) => setLabel(e.target.value)}
+        />
+        <Stepper label="Links" value={count} onChange={setCount} min={1} max={25} />
+        <Button size="lg" variant="primary" type="submit" className="create-submit" disabled={busy}>
+          {busy ? 'Creating...' : count > 1 ? 'Create links' : 'Create link'}
+        </Button>
+      </form>
       {error && (
-        <p className="error" role="alert" style={{ marginTop: 6 }}>
+        <p className="error" role="alert" style={{ marginTop: 8 }}>
           {error}
         </p>
       )}
-    </form>
+    </Card>
   );
 }
 
 function CreatedList({ created, onDismiss }: { created: CreatedLinks; onDismiss: () => void }) {
   const all = created.links.map((l) => `${l.label ? l.label + ': ' : ''}${candidateUrl(l.token)}`).join('\n');
   return (
-    <section className="panel panel-pad" style={{ marginTop: 12 }} aria-label="New links" role="status">
+    <section className="panel panel-pad" style={{ marginTop: 16 }} aria-label="New links" role="status">
       <div className="summary-head">
         <h2>{created.links.length > 1 ? `${created.links.length} new links` : 'New link'}</h2>
         <div style={{ display: 'flex', gap: 6 }}>
@@ -343,20 +389,16 @@ function SearchBox({ value, onChange, onOpen, onEnter }: { value: string; onChan
   }
   return (
     <form
-      className="open-form"
+      className="search-form"
       role="search"
       onSubmit={(e) => {
         e.preventDefault();
         onEnter();
       }}
     >
-      <label htmlFor="link-search" className="sr-only">
-        Search links by label, or paste a link to open it
-      </label>
-      <input
-        id="link-search"
+      <TextInput
+        label="Search"
         type="search"
-        className="input"
         placeholder="Search by label, or paste a link"
         autoComplete="off"
         value={value}
