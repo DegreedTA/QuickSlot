@@ -1,0 +1,232 @@
+/* Shared UI primitives (ds-*). One class per primitive; pages reuse these. */
+
+/* Button */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-weight: var(--fw-bold);
+  line-height: 1;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid transparent;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.12s ease, filter 0.15s ease;
+}
+.ds-btn:hover {
+  filter: brightness(0.94);
+}
+.ds-btn:active {
+  transform: scale(0.97);
+}
+.ds-btn:focus-visible {
+  outline: 3px solid #0026ee;
+  outline-offset: 2px;
+}
+.ds-btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+.ds-btn-sm {
+  font-size: 14px;
+  padding: 8px 16px;
+  gap: 6px;
+}
+.ds-btn-md {
+  font-size: 15px;
+  padding: 12px 22px;
+  gap: 8px;
+}
+.ds-btn-lg {
+  font-size: 17px;
+  padding: 15px 30px;
+  gap: 10px;
+}
+.ds-btn-primary {
+  background: #0062e3;
+  color: #fff;
+  border-color: #0062e3;
+  box-shadow: var(--shadow-blue);
+}
+.ds-btn-secondary {
+  background: transparent;
+  color: #0062e3;
+  border-color: #0062e3;
+}
+.ds-btn-ghost {
+  background: transparent;
+  color: #0062e3;
+  border-color: transparent;
+}
+
+/* IconButton */
+.ds-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  color: #5a6b7b;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+.ds-icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+.ds-icon-btn:hover,
+.ds-icon-btn:focus-visible {
+  color: #0f1f2c;
+  background: #f4f6f9;
+}
+.ds-icon-btn:focus-visible {
+  outline: 3px solid #0026ee;
+  outline-offset: 2px;
+}
+
+/* Tooltip */
+.ds-tip-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.ds-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f1f2c;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 6px 10px;
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: var(--z-pop, 20);
+}
+
+/* TextInput */
+.ds-field {
+  display: flex;
+  flex-direction: column;
+}
+.ds-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2a3742;
+  margin-bottom: 6px;
+}
+.ds-input {
+  height: 48px;
+  box-sizing: border-box;
+  padding: 0 16px;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  color: #0f1f2c;
+  background: #fff;
+  border: 1.5px solid #e4e9f0;
+  border-radius: 16px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.ds-input:focus {
+  border-color: #0062e3;
+  box-shadow: 0 0 0 3px rgba(0, 98, 227, 0.18);
+}
+
+/* Select (pill) */
+.ds-select-wrap {
+  position: relative;
+  display: inline-flex;
+  color: #5a6b7b;
+}
+.ds-select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 44px;
+  box-sizing: border-box;
+  padding: 0 40px 0 20px;
+  border: 1.5px solid #e4e9f0;
+  border-radius: 999px;
+  background: #fff;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: #0f1f2c;
+  cursor: pointer;
+  outline: none;
+}
+.ds-select:focus-visible {
+  outline: 3px solid #0026ee;
+  outline-offset: 2px;
+}
+.ds-select-wrap svg {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.ds-select-lg .ds-select {
+  height: 48px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Card */
+.ds-card {
+  background: #fff;
+  border: 1px solid #e4e9f0;
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+/* StatusChip: all chips share one fixed width (raise --ds-chip-w if a label ever wraps) */
+.ds-chip {
+  --ds-chip-w: 212px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--ds-chip-w);
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.ds-chip-new {
+  background: #0062e3;
+  color: #fff;
+}
+.ds-chip-waiting {
+  background: #e4e9f0;
+  color: #5a6b7b;
+}
+.ds-chip-ok {
+  background: #fff;
+  border-color: #e4e9f0;
+  color: #0f1f2c;
+}
+.ds-chip-few {
+  background: rgba(254, 209, 65, 0.28);
+  color: #7a5a00;
+}
+.ds-chip-none {
+  background: rgba(255, 127, 100, 0.16);
+  color: #c7472b;
+}

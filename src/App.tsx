@@ -2,6 +2,7 @@ import { Route, Routes, Link } from 'react-router-dom';
 import Candidate from './pages/Candidate';
 import Manager from './pages/Manager';
 import LinkDetail from './pages/LinkDetail';
+import UiKit from './pages/UiKit';
 
 export function App() {
   return (
@@ -10,6 +11,7 @@ export function App() {
         Skip to content
       </a>
       <Routes>
+        {import.meta.env.DEV && <Route path="/__ui" element={<UiKit />} />}
         <Route path="/" element={<Manager />} />
         <Route path="/:token/recruiter" element={<LinkDetail />} />
         <Route path="/:token" element={<Candidate />} />

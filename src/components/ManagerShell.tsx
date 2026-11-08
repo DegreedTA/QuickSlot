@@ -78,7 +78,7 @@ function Login() {
           QuickSlot
         </span>
         <div>
-          <h1 style={{ color: '#fff', fontSize: 'var(--t-2xl)', marginBottom: 12 }}>Interview availability, in one link.</h1>
+          <h1 style={{ color: 'var(--text-on-dark)', fontSize: 'var(--t-2xl)', marginBottom: 12 }}>Interview availability, in one link.</h1>
         </div>
       </div>
       <main className="gate-main" id="main">
