@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Globe } from '@phosphor-icons/react';
 import { tzLabel } from '../lib/time';
-import { CITY_LOOKUP_HOST, lookupCity, refreshZonesIfStale, searchZones, type ZoneOption } from '../lib/zones';
+import { lookupCity, refreshZonesIfStale, searchZones, type ZoneOption } from '../lib/zones';
 
 interface Props {
   id: string;
@@ -56,7 +56,6 @@ export function ZoneCombobox({ id, value, onChange, placeholder = 'City or time 
   }, [typed, local.length, open]);
 
   const options = local.length > 0 ? local : remote && remote.q === typed ? remote.options : [];
-  const searchingOnline = local.length === 0 && typed.length >= 3;
   const shown = query ?? (value ? tzLabel(value) : '');
 
   function choose(tz: string) {
@@ -149,11 +148,6 @@ export function ZoneCombobox({ id, value, onChange, placeholder = 'City or time 
                 {o.label}
               </li>
             ))
-          )}
-          {searchingOnline && (
-            <li className="combo-note" aria-hidden="true">
-              City search by {CITY_LOOKUP_HOST}. Only what you typed is sent.
-            </li>
           )}
         </ul>
       )}

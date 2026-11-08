@@ -76,7 +76,6 @@ export async function refreshZonesIfStale(): Promise<boolean> {
 // The browser only knows ~400 reference cities. When nothing local matches what was typed, ask a
 // free, key-less geocoding service (Open-Meteo) which time zone that city is in. Only the typed
 // text is sent. The zone it returns is checked against the browser's own database before use.
-export const CITY_LOOKUP_HOST = 'open-meteo.com';
 const lookupCache = new Map<string, ZoneOption[]>();
 
 interface GeoResult {

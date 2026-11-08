@@ -11,10 +11,11 @@ import {
   addDays,
   browserZone,
   calDiffDays,
+  calKey,
+  partsInZone,
   formatCalFull,
   formatCalShort,
   formatStamp,
-  formatTime,
   formatDayLong,
   groupByDay,
   mondayOf,
@@ -253,6 +254,18 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   }
 
   const need = Math.min(3, suggestions.length);
+  // suggested times, one column per day (in the candidate's zone)
+  const pickDays = useMemo(() => {
+    const days = new Map<string, { key: string; label: string; items: Suggestion[] }>();
+    for (const s of [...suggestions].sort((a, b) => a.start - b.start)) {
+      const key = calKey(partsInZone(s.start, tz));
+      if (!days.has(key)) days.set(key, { key, label: formatDayLong(s.start, tz), items: [] });
+      days.get(key)!.items.push(s);
+    }
+    return [...days.values()];
+  }, [suggestions, tz]);
+  // the calendar shows only what the candidate picked, with its number
+  const pickedOnGrid = useMemo(() => suggestions.filter((s) => ranks.has(s.start)), [suggestions, ranks]);
   const weekLo = slotInstantFor(weekStart, 0, tz);
   const weekHi = slotInstantFor(weekEnd, ROWS - 1, tz) + SLOT_MS;
   const weekGroups = groupByDay(slotArray.filter((t) => t >= weekLo && t < weekHi), tz);
@@ -292,21 +305,30 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
                 {ranked.length} of {need}
               </span>
             </div>
-            <div className="pick-list">
-              {suggestions.map((s) => {
-                const r = ranks.get(s.start);
-                return (
-                  <button key={s.start} type="button" className="pick" aria-pressed={!!r} disabled={locked} onClick={() => toggleRank(s.start)}>
-                    <span className="n">{r ?? ''}</span>
-                    <span>
-                      <b>
-                        {formatDayLong(s.start, tz)}, {formatTime(s.start, tz)}
-                      </b>
-                      <small>{s.minutes} min interview</small>
-                    </span>
-                  </button>
-                );
-              })}
+            <div className="pick-days">
+              {pickDays.map((d) => (
+                <div className="pick-day" key={d.key} role="group" aria-label={d.label}>
+                  <h3>{d.label}</h3>
+                  <div className="pick-col">
+                    {d.items.map((s) => {
+                      const r = ranks.get(s.start);
+                      return (
+                        <button
+                          key={s.start}
+                          type="button"
+                          className="pick"
+                          aria-pressed={!!r}
+                          disabled={locked}
+                          onClick={() => toggleRank(s.start)}
+                        >
+                          <span className="n">{r ?? ''}</span>
+                          <span>{rangeLabel(s.start, s.start + s.minutes * 60000, tz)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         )}
@@ -356,12 +378,12 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
             onChange={changeSlots}
             windowStart={windowStart}
             windowEnd={locked ? -Infinity : windowEnd}
-            suggestions={suggestions}
+            suggestions={pickedOnGrid}
             ranks={ranks}
             paintMode={paint}
             label={`Availability, ${formatCalShort(weekStart)} to ${formatCalShort(weekEnd)}. Select 15 minute blocks when you are free.`}
           />
-          <GridLegend freeLabel="Your availability" suggestedLabel="Suggested by recruiter" showSuggested={suggestions.length > 0} />
+          <GridLegend freeLabel="Your availability" suggestedLabel="Your picks (numbered)" showSuggested={pickedOnGrid.length > 0} />
           <SaveLine save={save} tz={tz} onRetry={() => (['avail', 'rank'] as const).forEach((w) => dirty.current[w] && void runSave(w))} />
         </section>
 

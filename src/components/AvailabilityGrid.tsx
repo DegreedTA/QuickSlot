@@ -10,7 +10,6 @@ import {
   formatCalWeekday,
   formatDayLong,
   formatTime,
-  rangeLabel,
   slotInstantFor,
   todayIn,
   type CalDate,
@@ -370,16 +369,12 @@ export function AvailabilityGrid({
             .filter(Boolean)
             .join(' ');
           const text = `${formatDayLong(t, tz)}, ${formatTime(t, tz)}`;
-          const bandLabel = run.top ? rangeLabel(t, t + run.len * SLOT_MS, tz) : null;
-          const suggestLabel = srun.top ? rangeLabel(t, t + srun.len * SLOT_MS, tz) : null;
           const inner = (
             <>
-              {bandLabel && <span className={`band-label${run.len === 1 ? ' one-row' : ''}`}>{bandLabel}</span>}
-              {suggestLabel && <span className={`band-label suggest-label${srun.len === 1 ? ' one-row' : ''}`}>{suggestLabel}</span>}
               {mark?.rank != null && <span className="rank">{mark.rank}</span>}
             </>
           );
-          const style = { gridColumn: c + 2, gridRow: r + 2, '--len': Math.max(run.len, srun.len, 1) } as CSSProperties;
+          const style = { gridColumn: c + 2, gridRow: r + 2 } as CSSProperties;
           if (!editable && !suggesting) {
             return (
               <div key={t} className={cls} style={style} data-t={t} title={run.on ? `${text}: free` : undefined}>

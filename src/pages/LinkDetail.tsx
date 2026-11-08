@@ -113,11 +113,14 @@ function Detail() {
   );
 }
 
-/** Start times for interviews of `len` minutes inside [from, to), one every 15 minutes. A range shorter than `len` gives one block. */
+/**
+ * Start times for interviews of `len` minutes laid back to back inside [from, to).
+ * 6:45 to 8:30 with 30 min gives 6:45, 7:15 and 7:45. A range shorter than `len` gives one block.
+ */
 export function expandRange(from: number, to: number, len: number): number[] {
   const ms = len * 60000;
   const out: number[] = [];
-  for (let t = from; t + ms <= to; t += SLOT_MS) out.push(t);
+  for (let t = from; t + ms <= to; t += ms) out.push(t);
   return out.length ? out : [from];
 }
 
@@ -175,8 +178,8 @@ function useSuggestions(data: ManagerLinkData, reload: () => Promise<void>) {
   }
 
   /**
-   * Offer interviews of `len` minutes inside [from, to), starting every 15 minutes.
-   * 10:00 to 10:45 with 30 min gives 10:00 and 10:15; with 45 min it gives one block.
+   * Offer interviews of `len` minutes inside [from, to), back to back from the start.
+   * 10:00 to 10:45 with 30 min gives one block (10:00); 9:00 to 10:00 gives two.
    * Returns a message if nothing could be added.
    */
   function addRange(from: number, to: number, zone: string, len = Number(minutes)): string | null {

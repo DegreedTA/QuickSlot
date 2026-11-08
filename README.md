@@ -57,7 +57,7 @@ Ask IT to point `schedule.degreedlabs.com` at the new site. The old links (`/<12
 
 ## Suggested times
 
-- Recruiters drag on the calendar in 15 minute steps, then choose the interview length. A range of 10:00 to 10:45 with a 30 minute interview gives two options (10:00 and 10:15); with 45 minutes it gives one.
+- Recruiters drag on the calendar in 15 minute steps, then choose the interview length. The interviews are laid back to back from the start of the range: 9:00 to 10:00 with 30 minutes gives two options (9:00 and 9:30), and 10:00 to 10:45 gives one (10:00). The candidate sees the suggestions grouped by day and ranks the ones they prefer; only the ones they rank are drawn on their calendar.
 - **Clear all** removes every suggested time on the link (or the whole batch).
 - Suggested times that have already started are deleted automatically. The database does this whenever a link or the dashboard is opened, and every 15 minutes on its own if the `pg_cron` extension is on (Supabase: Database > Extensions > pg_cron). `schema.sql` tries to turn it on and schedule the job; if it cannot, nothing breaks.
 - If the database was set up before this change, run the whole of `supabase/schema.sql` again in the SQL Editor. It is safe to re-run.

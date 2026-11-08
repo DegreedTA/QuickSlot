@@ -306,8 +306,8 @@ export function groupByDay(starts: number[], tz: string, from = Date.now() - SLO
     .map(([key, ts]) => ({ key, label: formatDayLong(ts[0], tz), ranges: mergeSlots(ts) }));
 }
 
-export function summaryText(starts: number[], tz: string): string {
-  const groups = groupByDay(starts, tz);
+export function summaryText(starts: number[], tz: string, from?: number): string {
+  const groups = groupByDay(starts, tz, from);
   if (!groups.length) return '';
   const lines = groups.map((g) => `${g.label}: ${g.ranges.map((r) => rangeLabel(r.start, r.end, tz)).join(', ')}`);
   return `Availability (times in ${tzLabel(tz)})\n${lines.join('\n')}`;
