@@ -21,6 +21,7 @@
   --action: #0b6e69;
   --action-hi: #09595a;
   --suggest: #cdc3f2;
+  --muted-band: #d3dadc;
   --suggest-edge: #5b4ab0;
   --suggest-ink: #2f2470;
   --change: #b8341b;
@@ -1039,6 +1040,10 @@ table.links {
 .cell.is-suggest.s-top.s-bottom::after {
   inset: 1px 4px;
 }
+/* suggestions the candidate did not pick (recruiter view) */
+.cell.is-suggest.is-muted::after {
+  background: var(--muted-band);
+}
 .cell .band-label {
   z-index: 3;
 }
@@ -1138,6 +1143,9 @@ dialog.dlg::backdrop {
 }
 .swatch-suggest {
   background: var(--suggest);
+}
+.swatch-muted {
+  background: var(--muted-band);
 }
 .swatch-past {
   background: repeating-linear-gradient(135deg, #fff 0 3px, rgba(14, 47, 61, 0.2) 3px 4px);

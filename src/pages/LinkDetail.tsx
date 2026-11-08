@@ -312,11 +312,18 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
             slots={slots}
             suggestions={suggestions}
             ranks={ranks}
+            muteUnpicked
             label={`Candidate availability, ${formatCalShort(weekStart)} to ${formatCalShort(weekEnd)}, in ${tzLabel(zone)}`}
             windowStart={Math.ceil((now + LEAD_MS) / SLOT_MS) * SLOT_MS}
             onSuggestRange={expired ? undefined : onCalendarRange}
           />
-          <GridLegend freeLabel="Candidate's availability" suggestedLabel="Times you suggested" showSuggested />
+          <GridLegend
+            freeLabel="Candidate's availability"
+            suggestedLabel={ranks.size > 0 ? "Candidate's picks (in order)" : 'Times you suggested'}
+            showSuggested
+            mutedLabel="Not chosen"
+            showMuted={ranks.size > 0 && suggestions.some((s) => !ranks.has(s.start))}
+          />
           {!expired && <p className="meta">To suggest times, drag on the calendar (15 minute steps), then choose the interview length. Click a suggested time to remove it.</p>}
           {pending && (
             <SuggestDialog

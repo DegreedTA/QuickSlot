@@ -34,6 +34,8 @@ interface Props {
   suggestions?: Suggestion[];
   /** start instant of a suggestion -> 1-based rank chosen by the candidate */
   ranks?: Map<number, number>;
+  /** Recruiter view: once the candidate has ranked something, suggestions they did not pick turn grey. */
+  muteUnpicked?: boolean;
   /** touch devices: dragging paints instead of scrolling */
   paintMode?: boolean;
   /** 5 (Mon to Fri) or 7 */
@@ -51,10 +53,14 @@ export function GridLegend({
   freeLabel,
   suggestedLabel,
   showSuggested,
+  mutedLabel,
+  showMuted = false,
 }: {
   freeLabel: string;
   suggestedLabel: string;
   showSuggested: boolean;
+  mutedLabel?: string;
+  showMuted?: boolean;
 }) {
   return (
     <div className="legend" aria-label="Key">
@@ -66,6 +72,12 @@ export function GridLegend({
         <span>
           <i className="swatch swatch-suggest" aria-hidden="true" />
           {suggestedLabel}
+        </span>
+      )}
+      {showMuted && (
+        <span>
+          <i className="swatch swatch-muted" aria-hidden="true" />
+          {mutedLabel}
         </span>
       )}
     </div>
@@ -100,6 +112,7 @@ export function AvailabilityGrid({
   windowEnd = Infinity,
   suggestions = [],
   ranks,
+  muteUnpicked = false,
   paintMode = false,
   days: DAYS = 5,
   label,
@@ -134,21 +147,30 @@ export function AvailabilityGrid({
 
   // suggestion coverage per cell
   const marks = useMemo(() => {
-    const m = new Map<number, { rank?: number }>();
+    const m = new Map<number, { rank?: number; muted: boolean }>();
+    const anyPicked = !!ranks && ranks.size > 0;
     for (const s of suggestions) {
+      const picked = !!ranks?.has(s.start);
+      const muted = muteUnpicked && anyPicked && !picked;
       const first = Math.floor(s.start / SLOT_MS) * SLOT_MS;
       for (let t = first; t < s.start + s.minutes * 60000; t += SLOT_MS) {
-        const prev = m.get(t) ?? {};
-        if (t === first && ranks?.has(s.start)) prev.rank = ranks.get(s.start);
-        m.set(t, prev);
+        const prev = m.get(t);
+        const cell: { rank?: number; muted: boolean } = prev ?? { muted };
+        cell.muted = prev ? prev.muted && muted : muted; // a picked time wins where two overlap
+        if (t === first && picked) cell.rank = ranks!.get(s.start);
+        m.set(t, cell);
       }
     }
     return m;
-  }, [suggestions, ranks]);
+  }, [suggestions, ranks, muteUnpicked]);
 
   // suggested times get the same band shape as free time, so they read as the same kind of thing
   const sruns = useMemo(
-    () => grid.instants.map((col) => runsOf(col, (t) => marks.has(t))),
+    () => grid.instants.map((col) => runsOf(col, (t) => marks.get(t)?.muted === false)),
+    [grid, marks],
+  );
+  const mruns = useMemo(
+    () => grid.instants.map((col) => runsOf(col, (t) => marks.get(t)?.muted === true)),
     [grid, marks],
   );
 
@@ -350,8 +372,8 @@ export function AvailabilityGrid({
       {grid.instants.map((col, c) =>
         col.map((t, r) => {
           const run = runs[c][r];
-          const srun = sruns[c][r];
           const mark = marks.get(t);
+          const srun = mark?.muted ? mruns[c][r] : sruns[c][r];
           const enabled = enabledAt(t);
           const cls = [
             'cell',
@@ -361,6 +383,7 @@ export function AvailabilityGrid({
             run.top ? 'band-top' : '',
             run.bottom ? 'band-bottom' : '',
             srun.on ? 'is-suggest' : '',
+            mark?.muted ? 'is-muted' : '',
             srun.top ? 's-top' : '',
             srun.bottom ? 's-bottom' : '',
             preview && preview.c === c && r >= preview.lo && r <= preview.hi ? 'is-preview' : '',
