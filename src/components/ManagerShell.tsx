@@ -7,7 +7,7 @@ import { DEMO_PASSCODE } from '../lib/demoApi';
 import { Badge, Button } from './ui';
 
 /** Shows the passcode screen until a recruiter signs in, then the top bar + content. */
-export function ManagerShell({ children }: { children: ReactNode }) {
+export function ManagerShell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   const { passcode, signOut } = useSession();
   if (!passcode) return <Login />;
   return (
@@ -21,7 +21,7 @@ export function ManagerShell({ children }: { children: ReactNode }) {
           Sign out
         </Button>
       </header>
-      <main className="app-main" id="main">
+      <main className={`app-main${wide ? ' app-main--wide' : ''}`} id="main">
         {children}
       </main>
     </div>

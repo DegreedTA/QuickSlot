@@ -1,6 +1,6 @@
 import {
   useEffect, useId, useRef, useState,
-  type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type HTMLAttributes,
+  type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type HTMLAttributes,
 } from 'react';
 import { CaretDown, Check, Copy, Minus, Plus } from '@phosphor-icons/react';
 import { copyText } from '../../lib/clipboard';
@@ -17,7 +17,7 @@ export function Button({
 }
 
 /* Tooltip: hover or keyboard focus, after 300ms, above and centered */
-export function Tooltip({ label, children }: { label: string; children: ReactNode }) {
+export function Tooltip({ label, children, className, style }: { label: string; children: ReactNode; className?: string; style?: CSSProperties }) {
   const [open, setOpen] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   const id = useId();
@@ -32,7 +32,8 @@ export function Tooltip({ label, children }: { label: string; children: ReactNod
   };
   return (
     <span
-      className="ds-tip-wrap"
+      className={cx('ds-tip-wrap', className)}
+      style={style}
       onMouseEnter={show}
       onMouseLeave={hide}
       onFocus={show}

@@ -9,6 +9,7 @@ import '@fontsource/inter/800.css';
 import './styles/tokens.css';
 import './styles/primitives.css';
 import './styles/app.css';
+import './styles/detail.css';
 import { App } from './App';
 import { SessionProvider } from './lib/session';
 
