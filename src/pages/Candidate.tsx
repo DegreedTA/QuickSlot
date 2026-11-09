@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { CaretLeft, CaretRight, HandPointing, Trash } from '@phosphor-icons/react';
+import { Check, HandPointing } from '@phosphor-icons/react';
 import { api, isDemo } from '../lib/api';
 import type { CandidateLinkData, CandidateResult } from '../lib/types';
 import {
@@ -16,19 +16,18 @@ import {
   formatCalFull,
   formatCalShort,
   formatStamp,
+  formatTime,
   formatDayLong,
-  groupByDay,
   mondayOf,
   rangeLabel,
   slotInstantFor,
   todayIn,
   zonedToUtc,
-  zoneName,
+  type CalDate,
 } from '../lib/time';
-import { AvailabilityGrid, GridLegend, type Suggestion } from '../components/AvailabilityGrid';
-import { Summary } from '../components/Summary';
+import { WeekCalendar, type Suggestion } from '../components/WeekCalendar';
 import { ZoneCombobox } from '../components/ZoneCombobox';
-import { BrandMark } from '../components/Brand';
+import { Button, Card, NavArrow } from '../components/ui';
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'expired' } | { kind: 'notfound' } | { kind: 'ok'; data: CandidateLinkData };
 
@@ -58,8 +57,8 @@ export default function Candidate() {
       <>
         <TopBar />
         <main className="cand" aria-busy="true" aria-label="Loading">
-          <div className="skel" style={{ height: 34, width: '50%' }} />
-          <div className="skel" style={{ height: 420, borderRadius: 8 }} />
+          <div className="skel" style={{ height: 48, width: '50%' }} />
+          <div className="skel" style={{ height: 420, borderRadius: 16 }} />
         </main>
       </>
     );
@@ -68,9 +67,7 @@ export default function Candidate() {
     return (
       <StatePage title="Could not load">
         <p>Check your connection and try again.</p>
-        <button className="btn btn-primary" onClick={fetchLink}>
-          Try again
-        </button>
+        <Button onClick={fetchLink}>Try again</Button>
       </StatePage>
     );
   }
@@ -94,12 +91,9 @@ export default function Candidate() {
 function TopBar() {
   return (
     <header className="cand-top">
-      <div className="cand-top-inner">
-        <span className="brand" style={{ padding: 0, fontSize: 'var(--t-base)' }}>
-          <BrandMark size={22} />
-          QuickSlot
-        </span>
-      </div>
+      <span className="cand-brand">
+        Degreed<span> · QuickSlot</span>
+      </span>
     </header>
   );
 }
@@ -117,17 +111,27 @@ function StatePage({ title, children }: { title: string; children: React.ReactNo
 
 type Save = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved'; at: number } | { kind: 'error' };
 
+/** "Nov 9 – 13", or "Nov 30 – Dec 4" across a month end. */
+const weekLabel = (mon: CalDate) => {
+  const fri = addDays(mon, 4);
+  return `${formatCalShort(mon)} – ${mon.m === fri.m ? fri.d : formatCalShort(fri)}`;
+};
+const hoursText = (slotCount: number) => `${Number((slotCount / 4).toFixed(2))} h free`;
+
 function CandidateView({ token, data }: { token: string; data: CandidateLinkData }) {
+  // Returning visit: the link already has saved data. This is a heuristic, not a stored fact: a candidate
+  // who chose a time zone and nothing else (or whose real zone is UTC) still looks like a first visit.
+  const [returning] = useState(() => data.slots.length > 0 || data.timezone !== 'UTC');
   // A new link starts locked: nothing can be marked until the candidate picks their time zone.
-  // (A link that already has times, or a zone other than the default UTC, counts as chosen.)
-  const [tzChosen, setTzChosen] = useState(() => data.slots.length > 0 || data.timezone !== 'UTC');
+  const [tzChosen, setTzChosen] = useState(returning);
   const locked = !tzChosen;
-  const [tz, setTz] = useState(() => (data.slots.length > 0 || data.timezone !== 'UTC' ? data.timezone : browserZone()));
+  const [tz, setTz] = useState(() => (returning ? data.timezone : browserZone()));
   const [slots, setSlots] = useState<Set<number>>(() => new Set(data.slots.map((s) => Date.parse(s))));
   const [ranked, setRanked] = useState<number[]>(() => data.ranked_choices.map((s) => Date.parse(s)));
   const [weekIdx, setWeekIdx] = useState(0);
-  const [save, setSave] = useState<Save>({ kind: 'saved', at: Date.parse(data.updated_at) });
+  const [save, setSave] = useState<Save>(() => (returning || data.ranked_choices.length ? { kind: 'saved', at: Date.parse(data.updated_at) } : { kind: 'idle' }));
   const [paint, setPaint] = useState(false);
+  const [done, setDone] = useState(false);
 
   const latest = useRef({ slots, tz, ranked });
   latest.current = { slots, tz, ranked };
@@ -181,30 +185,32 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
       window.clearTimeout(timers.current[which]);
       timers.current[which] = window.setTimeout(() => runSave(which), delay);
       setSave({ kind: 'saving' });
+      setDone(false); // editing again: the "all set" message no longer applies
     },
     [runSave],
   );
 
+  const flushAll = useCallback(() => {
+    (['avail', 'rank'] as const).forEach((w) => {
+      if (dirty.current[w]) {
+        window.clearTimeout(timers.current[w]);
+        void runSave(w);
+      }
+    });
+  }, [runSave]);
+
   // flush pending edits when the tab is hidden or closed
   useEffect(() => {
-    const flush = () => {
-      (['avail', 'rank'] as const).forEach((w) => {
-        if (dirty.current[w]) {
-          window.clearTimeout(timers.current[w]);
-          void runSave(w);
-        }
-      });
-    };
-    const onVis = () => document.visibilityState === 'hidden' && flush();
+    const onVis = () => document.visibilityState === 'hidden' && flushAll();
     document.addEventListener('visibilitychange', onVis);
-    window.addEventListener('pagehide', flush);
+    window.addEventListener('pagehide', flushAll);
     return () => {
       document.removeEventListener('visibilitychange', onVis);
-      window.removeEventListener('pagehide', flush);
+      window.removeEventListener('pagehide', flushAll);
       window.clearTimeout(timers.current.avail);
       window.clearTimeout(timers.current.rank);
     };
-  }, [runSave]);
+  }, [flushAll]);
 
   // the window: today through the next 30 days, Monday to Friday, in the candidate's zone
   const now = Date.now();
@@ -221,7 +227,6 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   const idx = Math.min(weekIdx, weeks.length - 1);
   const weekStart = weeks[idx];
   const weekEnd = addDays(weekStart, 4);
-  const slotArray = useMemo(() => [...slots], [slots]);
   // too soon is greyed out: the first selectable block starts at least LEAD_MINUTES from now
   const windowStart = Math.ceil((now + LEAD_MS) / SLOT_MS) * SLOT_MS;
   const lastDay = addDays(today, WINDOW_DAYS);
@@ -246,6 +251,7 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
     changeSlots(new Set([...slots].filter((t) => t < lo || t >= hi)));
   }
 
+  /** Rank is the click order; unpicking renumbers the rest because ranks come from the array position. */
   function toggleRank(t: number) {
     const next = ranked.includes(t) ? ranked.filter((x) => x !== t) : [...ranked, t];
     setRanked(next);
@@ -253,125 +259,151 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
     schedule('rank', 500);
   }
 
-  const need = Math.min(3, suggestions.length);
-  // suggested times, one column per day (in the candidate's zone)
-  const pickDays = useMemo(() => {
-    const days = new Map<string, { key: string; label: string; items: Suggestion[] }>();
+  // suggested times: for each week that has any, Monday to Friday columns; days without a suggestion stay empty
+  const pickWeeks = useMemo(() => {
+    const byWeek = new Map<string, { mon: CalDate; days: { day: CalDate; label: string; items: Suggestion[] }[] }>();
     for (const s of [...suggestions].sort((a, b) => a.start - b.start)) {
-      const key = calKey(partsInZone(s.start, tz));
-      if (!days.has(key)) days.set(key, { key, label: formatDayLong(s.start, tz), items: [] });
-      days.get(key)!.items.push(s);
+      const p = partsInZone(s.start, tz);
+      if (p.dow === 0 || p.dow === 6) continue; // the calendar is Monday to Friday
+      const mon = mondayOf({ y: p.y, m: p.m, d: p.d });
+      const key = calKey(mon);
+      if (!byWeek.has(key)) {
+        byWeek.set(key, {
+          mon,
+          days: Array.from({ length: 5 }, (_, i) => {
+            const day = addDays(mon, i);
+            return { day, label: formatDayLong(slotInstantFor(day, 0, tz), tz), items: [] as Suggestion[] };
+          }),
+        });
+      }
+      byWeek.get(key)!.days[(p.dow + 6) % 7].items.push(s);
     }
-    return [...days.values()];
+    return [...byWeek.values()];
   }, [suggestions, tz]);
   // the calendar shows only what the candidate picked, with its number
   const pickedOnGrid = useMemo(() => suggestions.filter((s) => ranks.has(s.start)), [suggestions, ranks]);
-  const weekLo = slotInstantFor(weekStart, 0, tz);
-  const weekHi = slotInstantFor(weekEnd, ROWS - 1, tz) + SLOT_MS;
-  const weekGroups = groupByDay(slotArray.filter((t) => t >= weekLo && t < weekHi), tz);
   const expiresLabel = formatCalFull(todayIn(tz, Date.parse(data.expires_at)));
+  const stepBadge = (n: number) => !returning && <span className="step-badge" aria-hidden="true">{n}</span>;
+
+  function finish() {
+    flushAll();
+    setDone(true);
+  }
 
   return (
     <>
       <TopBar />
       <main className="cand" id="main">
-        <h1>When are you free?</h1>
-
-        <div className="field zone-field">
-          <label htmlFor="tz">Time zone</label>
-          <ZoneCombobox
-            id="tz"
-            value={locked ? null : tz}
-            onChange={changeZone}
-            placeholder="Choose your time zone to start"
-          />
-          {locked && (
-            <div className="zone-prompt">
-              <p className="hint" role="status">
-                Pick your time zone first. Every time on this page is shown in it.
-              </p>
-              <button type="button" className="btn btn-sm" onClick={() => changeZone(tz)}>
-                Use my device's time zone ({zoneName(tz)})
-              </button>
-            </div>
-          )}
+        <div className="cand-intro">
+          <h1>When are you free?</h1>
+          <p>Add your availability for future interviews</p>
         </div>
 
+        <Card className="cand-card cand-tz" aria-labelledby="tz-h">
+          <div className="cand-title">
+            {stepBadge(1)}
+            <div>
+              <h2 id="tz-h">Your time zone</h2>
+              {locked && (
+                <p className="cand-sub" role="status">
+                  Pick your time zone first. Every time on this page is shown in it.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="ds-zone ds-zone--lg">
+            <label htmlFor="tz" className="sr-only">
+              Time zone
+            </label>
+            <ZoneCombobox id="tz" value={locked ? null : tz} onChange={changeZone} placeholder="Choose your time zone to start" />
+          </div>
+          <Button size="md" variant="ghost" onClick={() => changeZone(browserZone())}>
+            Use my device's time zone
+          </Button>
+        </Card>
+
         {suggestions.length > 0 && (
-          <section className="picks" aria-labelledby="picks-h">
-            <div className="picks-head">
-              <h2 id="picks-h">Suggested times based on the interviewer's calendar</h2>
-              <span className="hint">
-                {ranked.length} of {need}
-              </span>
+          <Card className={`cand-card cand-pad${locked ? ' is-locked' : ''}`} aria-labelledby="picks-h">
+            <div className="cand-head-row">
+              <div className="cand-title">
+                {stepBadge(2)}
+                <h2 id="picks-h">Pick the suggested times that work for you</h2>
+              </div>
+              {pickedOnGrid.length > 0 && (
+                <span className="picked-chip" role="status">
+                  {pickedOnGrid.length} picked
+                </span>
+              )}
             </div>
-            <div className="pick-days">
-              {pickDays.map((d) => (
-                <div className="pick-day" key={d.key} role="group" aria-label={d.label}>
-                  <h3>{d.label}</h3>
-                  <div className="pick-col">
-                    {d.items.map((s) => {
-                      const r = ranks.get(s.start);
-                      return (
-                        <button
-                          key={s.start}
-                          type="button"
-                          className="pick"
-                          aria-pressed={!!r}
-                          disabled={locked}
-                          onClick={() => toggleRank(s.start)}
-                        >
-                          <span className="n">{r ?? ''}</span>
-                          <span>{rangeLabel(s.start, s.start + s.minutes * 60000, tz)}</span>
-                        </button>
-                      );
-                    })}
+            {pickWeeks.map((w) => (
+              <div className="pick-grid" key={calKey(w.mon)}>
+                {w.days.map((d) => (
+                  <div className="pick-day" key={calKey(d.day)} role="group" aria-label={d.label}>
+                    <h3>{d.label}</h3>
+                    <div className="pick-col">
+                      {d.items.map((s) => {
+                        const r = ranks.get(s.start);
+                        return (
+                          <button
+                            key={s.start}
+                            type="button"
+                            className="pick-opt"
+                            aria-pressed={!!r}
+                            aria-label={`${d.label}, ${rangeLabel(s.start, s.start + s.minutes * 60000, tz)}${r ? `, picked number ${r}` : ''}`}
+                            disabled={locked}
+                            onClick={() => toggleRank(s.start)}
+                          >
+                            {r ? <span className="pick-rank">{r}</span> : <span className="pick-ring" />}
+                            {formatTime(s.start, tz)}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </section>
+                ))}
+              </div>
+            ))}
+          </Card>
         )}
 
-        <section aria-label="Availability" className={locked ? 'is-locked' : undefined}>
-          <div className="week-bar">
-            <div className="week-nav">
-              <button className="btn btn-icon btn-quiet" aria-label="Previous week" disabled={idx === 0} onClick={() => setWeekIdx(idx - 1)}>
-                <CaretLeft size={18} />
-              </button>
-              <div className="week-title" aria-live="polite">
-                {formatCalShort(weekStart)} to {formatCalShort(weekEnd)}
-              </div>
-              <button
-                className="btn btn-icon btn-quiet"
-                aria-label="Next week"
-                disabled={idx >= weeks.length - 1}
-                onClick={() => setWeekIdx(idx + 1)}
-              >
-                <CaretRight size={18} />
-              </button>
-            </div>
-            <div className="week-tools">
-              <button type="button" className="btn btn-sm paint-toggle" aria-pressed={paint} disabled={locked} onClick={() => setPaint(!paint)}>
-                <HandPointing size={16} aria-hidden />
-                Draw {paint ? 'on' : 'off'}
-              </button>
-              <button type="button" className="btn btn-sm btn-quiet" disabled={locked} onClick={clearWeek}>
-                <Trash size={16} aria-hidden />
-                Clear
-              </button>
+        <Card className={`cand-card cand-pad cand-cal${locked ? ' is-locked' : ''}`} aria-labelledby="cal-h">
+          <div className="cand-title">
+            {stepBadge(3)}
+            <div>
+              <h2 id="cal-h">Mark any other times you're free</h2>
+              <p className="cand-sub">Click or drag on the calendar</p>
             </div>
           </div>
 
-          {weekGroups.length > 0 && (
-            <p className="week-readout" aria-live="polite">
-              {weekGroups
-                .map((g) => `${g.label.split(',')[0]} ${g.ranges.map((r) => rangeLabel(r.start, r.end, tz)).join(', ')}`)
-                .join('; ')}
-            </p>
-          )}
+          <div className="cand-toolbar">
+            <div className="cand-weeknav">
+              <NavArrow dir="left" label="Previous week" disabled={idx === 0} onClick={() => setWeekIdx(idx - 1)} />
+              <div className="cand-weeklabel" aria-live="polite">
+                {weekLabel(weekStart)}
+              </div>
+              <NavArrow dir="right" label="Next week" disabled={idx >= weeks.length - 1} onClick={() => setWeekIdx(idx + 1)} />
+            </div>
+            <div className="legend-row cand-legend">
+              <span>
+                <i className="sw sw-free" aria-hidden="true" />
+                Your availability
+              </span>
+              <span>
+                <i className="sw sw-picked" aria-hidden="true" />
+                Your picks
+              </span>
+              <Button size="sm" variant="secondary" className="paint-toggle" aria-pressed={paint} disabled={locked} onClick={() => setPaint(!paint)}>
+                <HandPointing size={16} aria-hidden />
+                Draw {paint ? 'on' : 'off'}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={locked} onClick={clearWeek}>
+                Clear
+              </Button>
+            </div>
+          </div>
 
-          <AvailabilityGrid
+          <WeekCalendar
+            flat
             tz={tz}
             weekStart={weekStart}
             slots={slots}
@@ -383,17 +415,22 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
             paintMode={paint}
             label={`Availability, ${formatCalShort(weekStart)} to ${formatCalShort(weekEnd)}. Select 15 minute blocks when you are free.`}
           />
-          <GridLegend freeLabel="Your availability" suggestedLabel="Your picks (numbered)" showSuggested={pickedOnGrid.length > 0} />
-          <SaveLine save={save} tz={tz} onRetry={() => (['avail', 'rank'] as const).forEach((w) => dirty.current[w] && void runSave(w))} />
-        </section>
+        </Card>
 
-        <Summary starts={slotArray} tz={tz} title="Your availability" />
+        <SaveBar
+          save={save}
+          tz={tz}
+          done={done}
+          expires={expiresLabel}
+          picks={suggestions.length > 0 ? pickedOnGrid.length : null}
+          slotCount={slots.size}
+          onRetry={flushAll}
+          onDone={finish}
+          onKeepEditing={() => setDone(false)}
+        />
 
         <footer className="cand-foot">
-          <p>
-            <span className="nowrap-md">Not a booking. Saves automatically. Only your availability and time zone are stored.</span>
-          </p>
-          <p>This link expires {expiresLabel}.</p>
+          <p>Only your availability and time zone are saved. This link works until {expiresLabel}.</p>
           {isDemo && <p className="notice">Demo mode: data stays in this browser.</p>}
         </footer>
       </main>
@@ -401,26 +438,67 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   );
 }
 
-function SaveLine({ save, tz, onRetry }: { save: Save; tz: string; onRetry: () => void }) {
-  let text = '';
-  let cls = 'save-state';
-  if (save.kind === 'saving') text = 'Saving...';
-  else if (save.kind === 'saved') text = `Saved ${formatStamp(save.at, tz)}`;
-  else if (save.kind === 'error') {
-    cls += ' is-error';
-    text = 'Not saved.';
+function SaveBar({
+  save,
+  tz,
+  done,
+  expires,
+  picks,
+  slotCount,
+  onRetry,
+  onDone,
+  onKeepEditing,
+}: {
+  save: Save;
+  tz: string;
+  done: boolean;
+  expires: string;
+  picks: number | null;
+  slotCount: number;
+  onRetry: () => void;
+  onDone: () => void;
+  onKeepEditing: () => void;
+}) {
+  if (done && save.kind === 'saved') {
+    return (
+      <Card className="save-bar">
+        <div className="save-left" role="status" aria-live="polite">
+          <Check size={20} weight="bold" color="#0062E3" aria-hidden />
+          <span>
+            <strong>You're all set</strong>
+            <span className="save-meta"> · Your recruiter can see your availability. You can come back to this link until {expires}.</span>
+          </span>
+        </div>
+        <Button size="lg" variant="secondary" onClick={onKeepEditing}>
+          Keep editing
+        </Button>
+      </Card>
+    );
   }
+  const counts = `${picks === null ? '' : ` · ${picks} ${picks === 1 ? 'pick' : 'picks'}`} · ${hoursText(slotCount)}`;
   return (
-    <p className={cls} role={save.kind === 'error' ? 'alert' : 'status'} aria-live="polite" style={{ marginTop: 10 }}>
-      {text}
-      {save.kind === 'error' && (
-        <>
-          {' '}
-          <button className="btn btn-sm" onClick={onRetry}>
-            Retry
-          </button>
-        </>
-      )}
-    </p>
+    <Card className="save-bar">
+      <div className="save-left" role={save.kind === 'error' ? 'alert' : 'status'} aria-live="polite">
+        <Check size={20} weight="bold" color={save.kind === 'error' ? '#C7472B' : '#0062E3'} aria-hidden />
+        <span>
+          {save.kind === 'saving' && <strong>Saving...</strong>}
+          {save.kind === 'saved' && <strong>Saved {formatStamp(save.at, tz)}</strong>}
+          {save.kind === 'idle' && <strong>Changes save automatically</strong>}
+          {save.kind === 'error' && <strong className="is-error">Not saved.</strong>}
+          <span className="save-meta">{counts}</span>
+          {save.kind === 'error' && (
+            <>
+              {' '}
+              <Button size="sm" variant="secondary" onClick={onRetry}>
+                Retry
+              </Button>
+            </>
+          )}
+        </span>
+      </div>
+      <Button size="lg" onClick={onDone}>
+        I'm done <span aria-hidden="true">→</span>
+      </Button>
+    </Card>
   );
 }

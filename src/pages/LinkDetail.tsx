@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { Link, useParams } from 'react-router-dom';
 import { DotsThree, Plus, X } from '@phosphor-icons/react';
 import { ManagerShell } from '../components/ManagerShell';
-import { RecruiterCalendar, type Suggestion } from '../components/RecruiterCalendar';
+import { WeekCalendar, type Suggestion } from '../components/WeekCalendar';
 import { CopyButton } from '../components/CopyButton';
 import { ZoneCombobox } from '../components/ZoneCombobox';
-import { Badge, Button, Card, Select, StatusChip, TextInput } from '../components/ui';
+import { Badge, Button, Card, NavArrow, Select, StatusChip, TextInput } from '../components/ui';
 import { useDismiss } from '../components/ui/useDismiss';
 import { useManagerCall, useSession } from '../lib/session';
 import { api } from '../lib/api';
@@ -370,9 +370,7 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
           </div>
 
           <div className="week-nav">
-            <button type="button" className="nav-arrow" aria-label="Previous week" disabled={idx === 0} onClick={() => setPicked(idx - 1)}>
-              <Chevron dir="left" />
-            </button>
+            <NavArrow dir="left" label="Previous week" disabled={idx === 0} onClick={() => setPicked(idx - 1)} />
             <div className="week-tabs" role="tablist" aria-label="Weeks" onKeyDown={tabKeys}>
               {weeks.map((w, i) => {
                 const h = hoursIn(w);
@@ -393,9 +391,7 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
                 );
               })}
             </div>
-            <button type="button" className="nav-arrow" aria-label="Next week" disabled={idx >= weeks.length - 1} onClick={() => setPicked(idx + 1)}>
-              <Chevron dir="right" />
-            </button>
+            <NavArrow dir="right" label="Next week" disabled={idx >= weeks.length - 1} onClick={() => setPicked(idx + 1)} />
           </div>
 
           <div className="legend-row">
@@ -414,7 +410,7 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
             {!expired && <strong className="legend-hint">Drag on the calendar to suggest a time</strong>}
           </div>
 
-          <RecruiterCalendar
+          <WeekCalendar
             tz={zone}
             weekStart={weekStart}
             slots={slots}
@@ -488,14 +484,6 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
 
       {deactivating && <DeactivateDialog data={data} onClose={() => setDeactivating(false)} onDone={reload} />}
     </>
-  );
-}
-
-function Chevron({ dir }: { dir: 'left' | 'right' }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <polyline points={dir === 'left' ? '11 3.5 5.5 9 11 14.5' : '7 3.5 12.5 9 7 14.5'} />
-    </svg>
   );
 }
 

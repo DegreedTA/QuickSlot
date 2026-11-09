@@ -2,7 +2,9 @@
 // change PX_PER_15 and every position, height, grid line and pointer conversion follows.
 import { ROWS } from './time';
 
-export const PX_PER_15 = 14; // 15 min = 14px, 30 min = 28px, 1 h = 56px
+/** Touch screens get taller rows (24px, as the app always had) so a fingertip can hit one 15 minute row. */
+const COARSE = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+export const PX_PER_15 = COARSE ? 24 : 14; // desktop: 15 min = 14px, 30 min = 28px, 1 h = 56px
 export const HOUR_PX = PX_PER_15 * 4;
 export const PX_PER_MIN = HOUR_PX / 60;
 export const COLUMN_PX = ROWS * PX_PER_15; // 15 hours (6 AM to 9 PM) = 840px

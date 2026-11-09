@@ -240,9 +240,6 @@ a:hover {
   background-size: 5px 5px;
   background-repeat: no-repeat;
 }
-.caret {
-  caret-color: var(--color-true-blue);
-}
 .input {
   caret-color: var(--color-true-blue);
 }
@@ -408,375 +405,27 @@ code {
 }
 
 /* ------------------------------------------------------ candidate page */
-.cand-top {
-  background: var(--color-moonshot);
-  color: var(--text-on-dark);
-}
-.cand-top-inner {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 14px clamp(16px, 4vw, 32px);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: var(--t-sm);
-}
-.cand-top .expiry {
-  color: var(--text-on-dark-muted);
-}
-.cand {
-  max-width: 1040px;
-  margin: 0 auto;
-  padding: 36px clamp(16px, 4vw, 32px) 96px;
-  display: grid;
-  gap: 32px;
-}
-.cand-head {
-  display: grid;
-  gap: 12px;
-  max-width: 62ch;
-}
-.cand-head .lead {
-  font-size: var(--t-lg);
-  line-height: 1.4;
-  color: var(--text-body);
-}
-.assure {
-  display: grid;
-  gap: 4px;
-  color: var(--text-muted);
-  font-size: var(--t-sm);
-}
-.assure strong {
-  color: var(--text-strong);
-  font-weight: 600;
-}
-
-.zone-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 360px) 1fr;
-  gap: 8px 20px;
-  align-items: end;
-}
-.zone-note {
-  color: var(--text-muted);
-  font-size: var(--t-sm);
-  padding-bottom: 8px;
-}
-
-.week-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.week-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.week-title {
-  font-size: var(--t-lg);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  min-width: 11ch;
-  text-align: center;
-  padding: 0 6px;
-}
-.week-tools {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-.save-state {
-  font-size: var(--t-sm);
-  color: var(--text-muted);
-  min-height: 1.5em;
-}
-.save-state.is-error {
-  color: var(--danger);
-  font-weight: 600;
-}
-
-.paint-toggle {
-  display: none;
-}
 @media (pointer: coarse) {
-  .paint-toggle {
-    display: inline-flex;
-  }
   :root {
     --row-h: 24px;
   }
 }
-.paint-toggle[aria-pressed='true'] {
-  background: var(--color-moonshot);
-  color: #fff;
-  border-color: var(--color-moonshot);
-}
 
 /* the week: day columns, half-hour rows, availability as tide bands */
-.week {
-  display: grid;
-  grid-template-columns: var(--time-w) repeat(5, minmax(0, 1fr));
-  background: var(--surface-card);
-  border: 1px solid var(--border-light);
-  border-radius: var(--r-panel);
-  overflow: clip;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.week.is-painting {
-  touch-action: none;
-}
-.week-head {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-  background: var(--surface-sunken);
-  border-bottom: 1px solid var(--border-light);
-  padding: 8px 4px;
-  text-align: center;
-  line-height: 1.15;
-}
-.week-head b {
-  display: block;
-  font-size: var(--t-sm);
-  font-weight: 600;
-}
-.week-head span {
-  font-size: var(--t-xs);
-  color: var(--text-muted);
-}
-.week-head.is-today b {
-  color: var(--color-true-blue);
-}
-.week-head.is-today span::after {
-  content: ' today';
-}
-.week-corner {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-  background: var(--surface-sunken);
-  border-bottom: 1px solid var(--border-light);
-}
-.hour {
-  height: calc(var(--row-h) * 4);
-  grid-row: span 4;
-  padding: 2px 8px 0 0;
-  text-align: right;
-  font-size: var(--t-xs);
-  color: var(--text-muted);
-  border-top: 1px solid var(--border-light);
-}
-.hour:first-of-type {
-  border-top: 0;
-}
-.cell {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: var(--row-h);
-  padding: 0;
-  margin: 0;
-  border: 0;
-  border-left: 1px solid var(--border-light);
-  background: transparent;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  /* strong rule on the hour, faint rule on the half hour, none on the quarters */
-  background-size: 100% 1px;
-  background-repeat: no-repeat;
-  background-position: top;
-}
-.cell.is-half {
-  background-image: linear-gradient(var(--border-light), var(--border-light));
-}
-.cell.is-hour {
-  background-image: linear-gradient(var(--border-light), var(--border-light));
-}
-.cell.is-first-row {
-  background-image: none;
-}
-.cell.is-readonly {
-  cursor: default;
-}
-.cell:hover:not([disabled]):not(.is-readonly) {
-  background-color: rgba(0, 98, 227, 0.1);
-}
-.cell[disabled] {
-  cursor: not-allowed;
-  background-color: var(--surface-sunken);
-  background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgba(15, 31, 44, 0.13) 5px 6px);
-}
-.cell[disabled].is-half,
-.cell[disabled].is-hour {
-  box-shadow: inset 0 1px 0 var(--border-light);
-}
-.cell:focus-visible {
-  outline: 2px solid var(--text-strong);
-  outline-offset: -2px;
-  border-radius: 0;
-  z-index: 2;
-}
 
 /* the tide band: continuous across adjacent selected cells, outlined, with a heavier water-line on top */
-.cell.is-on::before {
-  content: '';
-  position: absolute;
-  inset: 0 4px 0 4px;
-  background: var(--qs-avail-bg);
-  z-index: 0;
-}
-.cell.is-on.band-top::before {
-  top: 1px;
-  border-top-left-radius: 6px;
-  border-top-right-radius: 6px;
-}
-.cell.is-on.band-bottom::before {
-  bottom: 1px;
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
-}
-.cell.is-on.band-top.band-bottom::before {
-  inset: 1px 4px;
-}
-.cell .band-label {
-  position: absolute;
-  z-index: 1;
-  top: 2px;
-  left: 12px;
-  right: 6px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  line-height: 12px;
-  color: var(--text-strong);
-  text-align: left;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  max-height: calc(var(--row-h) * var(--len, 1) - 4px);
-  pointer-events: none;
-}
-.cell .band-label.one-row {
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
 /* where a suggested time starts on the same row as free time, only the suggestion is labelled */
-.cell.s-top .band-label:not(.suggest-label) {
-  display: none;
-}
-.cell .suggest-label {
-  color: var(--text-strong);
-}
 @media (max-width: 520px) {
-  .cell .band-label {
-    display: none;
-  }
-  .week-readout {
-    display: block;
-  }
   h1 {
     font-size: 1.5rem;
-  }
-  .cand {
-    gap: 22px;
-    padding-top: 22px;
-  }
-  .cand-head {
-    gap: 8px;
-  }
-  .cand-head .lead {
-    font-size: var(--t-base);
-  }
-  .assure {
-    gap: 2px;
-    font-size: var(--t-xs);
-  }
-  .pick-list {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-  .pick {
-    min-height: 44px;
-    padding: 6px 10px;
-  }
-  .zone-note {
-    font-size: var(--t-xs);
   }
 }
 
 /* a painted band fades in as one mass (opacity only, so stacked cells show no seams) */
-@keyframes band-rise {
-  from {
-    opacity: 0.3;
-  }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .cell.is-on::before {
-    animation: band-rise 240ms var(--ease) both;
-  }
-}
 
 /* suggested times: the same band as free time (outline, water-line on top, rounded ends), in violet */
-.cell.is-suggest::after {
-  content: '';
-  position: absolute;
-  inset: 0 4px;
-  background: var(--qs-pick-bg);
-  z-index: 1;
-  pointer-events: none;
-}
-.cell.is-suggest.s-top::after {
-  top: 1px;
-  border-top-left-radius: 6px;
-  border-top-right-radius: 6px;
-}
-.cell.is-suggest.s-bottom::after {
-  bottom: 1px;
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
-}
-.cell.is-suggest.s-top.s-bottom::after {
-  inset: 1px 4px;
-}
 /* suggestions the candidate did not pick (recruiter view) */
-.cell.is-suggest.is-muted::after {
-  background: var(--color-mist);
-}
-.cell .band-label {
-  z-index: 3;
-}
 /* the live range while dragging on the calendar to suggest times */
-.cell.is-preview {
-  background-color: rgba(255, 127, 100, 0.2);
-  box-shadow: inset 2px 0 0 var(--qs-pick-edge), inset -2px 0 0 var(--qs-pick-edge);
-}
-.cell .rank {
-  position: absolute;
-  z-index: 2;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--text-strong);
-  color: #fff;
-  font-size: 0.625rem;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-.cell .rank {
-  z-index: 4;
-}
 
 /* confirmation dialog */
 dialog.dlg {
@@ -824,163 +473,11 @@ dialog.dlg::backdrop {
   border-color: var(--qs-avail-edge);
 }
 
-.legend {
-  display: flex;
-  gap: 8px 20px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-  font-size: var(--t-sm);
-  color: var(--text-muted);
-}
-.legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.swatch {
-  width: 18px;
-  height: 14px;
-  border-radius: 3px;
-  display: inline-block;
-}
-.swatch-band {
-  background: var(--qs-avail-bg);
-}
-.swatch-suggest {
-  background: var(--qs-pick-bg);
-}
-.swatch-muted {
-  background: var(--color-mist);
-}
-.swatch-past {
-  background: repeating-linear-gradient(135deg, #fff 0 3px, rgba(15, 31, 44, 0.2) 3px 4px);
-  border: 1px solid var(--border-light);
-}
-
 /* summaries: grouped by day, ready to paste */
-.summary {
-  display: grid;
-  gap: 12px;
-}
-.summary-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.summary dl {
-  margin: 0;
-  display: grid;
-  gap: 0;
-}
-.summary .row {
-  display: grid;
-  grid-template-columns: 13ch minmax(0, 1fr);
-  gap: 16px;
-  padding: 9px 0;
-  border-top: 1px solid var(--border-light);
-}
-.summary .row:first-child {
-  border-top: 0;
-}
-.summary dt {
-  font-weight: 600;
-  white-space: nowrap;
-}
-.summary dd {
-  margin: 0;
-  color: var(--text-body);
-}
-.summary dd span {
-  display: inline-block;
-  margin-right: 14px;
-}
 
 /* suggested times picker (candidate) */
-.picks {
-  display: grid;
-  gap: 20px;
-}
-.pick-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 8px;
-}
-.pick {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 52px;
-  padding: 8px 12px;
-  border: 1px solid var(--border-light);
-  border-radius: var(--r-ctl);
-  background: var(--surface-card);
-  color: var(--text-strong);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 160ms var(--ease), border-color 160ms var(--ease);
-}
-.pick:hover {
-  border-color: var(--color-true-blue);
-}
-.pick[aria-pressed='true'] {
-  background: var(--qs-avail-bg);
-  border-color: var(--qs-avail-edge);
-}
-.pick .n {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1.5px solid var(--text-muted);
-  display: grid;
-  place-items: center;
-  font-size: var(--t-xs);
-  font-weight: 700;
-}
-.pick[aria-pressed='true'] .n {
-  background: var(--text-strong);
-  border-color: var(--text-strong);
-  color: #fff;
-}
-.pick b {
-  display: block;
-  font-weight: 600;
-}
-.pick small {
-  color: var(--text-muted);
-  font-size: var(--t-xs);
-}
-.pick[aria-pressed='true'] small {
-  color: var(--text-strong);
-}
 
 /* suggested times: one column per day */
-.pick-days {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-  gap: 22px 20px;
-  align-items: start;
-}
-.pick-day h3 {
-  margin: 0 0 10px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid var(--color-true-blue);
-  font-size: var(--t-sm);
-  font-weight: 600;
-  color: var(--text-body);
-}
-.pick-col {
-  display: grid;
-  gap: 8px;
-}
-.pick-day .pick {
-  min-height: 44px;
-  padding: 6px 12px;
-  font-weight: 600;
-}
 
 /* time zone search */
 .combo {
@@ -1027,52 +524,9 @@ dialog.dlg::backdrop {
 .combo-opt.is-current {
   font-weight: 600;
 }
-.combo-note {
-  padding: 8px 10px;
-  border-top: 1px solid var(--border-light);
-  color: var(--text-muted);
-  font-size: var(--t-xs);
-}
 .combo-empty {
   padding: 10px;
   color: var(--text-muted);
-}
-.zone-field {
-  max-width: 520px;
-}
-@media (min-width: 640px) {
-  .zone-prompt .hint {
-    white-space: nowrap;
-  }
-}
-.zone-prompt {
-  display: grid;
-  gap: 8px;
-  justify-items: start;
-  margin-top: 4px;
-}
-.is-locked .week,
-.is-locked .week-bar {
-  opacity: 0.5;
-}
-.picks:has(.pick:disabled) {
-  opacity: 0.6;
-}
-.picks-head {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-.cand-foot {
-  display: grid;
-  gap: 10px;
-  color: var(--text-muted);
-  font-size: var(--t-xs);
-}
-@media (min-width: 640px) {
-  .nowrap-md {
-    white-space: nowrap;
-  }
 }
 .meta {
   font-size: var(--t-sm);
@@ -1134,32 +588,6 @@ dialog.dlg::backdrop {
   flex-wrap: wrap;
 }
 
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  z-index: var(--z-toast);
-  background: var(--text-strong);
-  color: #fff;
-  padding: 10px 16px;
-  border-radius: var(--r-ctl);
-  font-size: var(--t-sm);
-  font-weight: 600;
-  animation: toast-in 240ms var(--ease);
-}
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, 8px);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .toast {
-    animation: none;
-  }
-}
-
 .state-page {
   min-height: 100dvh;
   display: grid;
@@ -1175,28 +603,9 @@ dialog.dlg::backdrop {
   color: var(--text-body);
 }
 
-@media (min-width: 761px) {
-}
-
 /* readout of free ranges for narrow screens, where bands cannot carry labels */
-.week-readout {
-  display: none;
-  margin: 0 0 10px;
-  font-size: var(--t-sm);
-  color: var(--text-body);
-}
-.week-readout b {
-  color: var(--text-strong);
-}
-@media (max-width: 520px) {
-  .week-readout {
-    display: block;
-  }
-}
 
 /* ------------------------------------------------------ responsive */
-@media (max-width: 980px) {
-}
 
 @media (max-width: 860px) {
   .gate {
@@ -1213,28 +622,8 @@ dialog.dlg::backdrop {
 
 @media (max-width: 760px) {
   /* table rows become stacked entries */
-  .zone-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .zone-note {
-    padding-bottom: 0;
-  }
   :root {
     --time-w: 40px;
-  }
-  .hour {
-    padding-right: 5px;
-  }
-  .week-head {
-    padding: 6px 1px;
-  }
-  .week-title {
-    min-width: 0;
-    font-size: var(--t-base);
-  }
-  .summary .row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
   }
 }
 

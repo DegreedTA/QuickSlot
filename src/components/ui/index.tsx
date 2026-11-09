@@ -155,3 +155,14 @@ export function Stepper({
     </div>
   );
 }
+
+/* NavArrow: round previous / next button (week navigation) */
+export function NavArrow({ dir, label, disabled, onClick }: { dir: 'left' | 'right'; label: string; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="nav-arrow" aria-label={label} disabled={disabled} onClick={onClick}>
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points={dir === 'left' ? '11 3.5 5.5 9 11 14.5' : '7 3.5 12.5 9 7 14.5'} />
+      </svg>
+    </button>
+  );
+}
