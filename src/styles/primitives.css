@@ -290,3 +290,28 @@
   font-weight: 700;
   color: #0f1f2c;
 }
+
+/* NavArrow: previous / next week */
+.nav-arrow {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #e4e9f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #0f1f2c;
+  cursor: pointer;
+}
+.nav-arrow:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.nav-arrow:focus-visible {
+  outline: 3px solid #0026ee;
+  outline-offset: 2px;
+}

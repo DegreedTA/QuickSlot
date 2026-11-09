@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, ArrowSquareOut, Plus, X } from '@phosphor-icons/react';
+import { DotsThree, Plus, X } from '@phosphor-icons/react';
 import { ManagerShell } from '../components/ManagerShell';
-import { AvailabilityGrid, GridLegend, type Suggestion } from '../components/AvailabilityGrid';
+import { WeekCalendar, type Suggestion } from '../components/WeekCalendar';
 import { CopyButton } from '../components/CopyButton';
-import { Summary } from '../components/Summary';
 import { ZoneCombobox } from '../components/ZoneCombobox';
+import { Badge, Button, Card, NavArrow, Select, StatusChip, TextInput } from '../components/ui';
+import { useDismiss } from '../components/ui/useDismiss';
 import { useManagerCall, useSession } from '../lib/session';
 import { api } from '../lib/api';
 import { ApiError, type ManagerLinkData, type SuggestedSlot } from '../lib/types';
+import { linkStatus, statusInputFromLink } from '../lib/linkStatus';
 import {
   LEAD_MINUTES,
   LEAD_MS,
@@ -18,20 +20,18 @@ import {
   addDays,
   calDiffDays,
   calKey,
-  formatCalFull,
   formatCalShort,
-  formatDateTime,
   formatDayLong,
-  formatStamp,
   formatTime,
+  groupByDay,
   rangeLabel,
+  summaryText,
   isWeekend,
   mondayOf,
   slotInstantFor,
   todayIn,
   tzLabel,
   zonedToUtc,
-  zoneName,
   type CalDate,
 } from '../lib/time';
 
@@ -48,7 +48,7 @@ function nextWeekday(c: CalDate): CalDate {
 
 export default function LinkDetail() {
   return (
-    <ManagerShell>
+    <ManagerShell wide>
       <Detail />
     </ManagerShell>
   );
@@ -85,30 +85,29 @@ function Detail() {
 
   return (
     <>
-      <Link to="/" className="crumb">
-        <ArrowLeft size={16} aria-hidden />
-        All links
+      <Link to="/" className="back-link">
+        ← All links
       </Link>
       {state.kind === 'loading' && (
-        <div aria-busy="true" aria-label="Loading" style={{ display: 'grid', gap: 16 }}>
-          <div className="skel" style={{ height: 40, width: '50%' }} />
-          <div className="skel" style={{ height: 460, borderRadius: 8 }} />
+        <div aria-busy="true" aria-label="Loading" style={{ display: 'grid', gap: 32 }}>
+          <div className="skel" style={{ height: 40, width: '40%' }} />
+          <div className="skel" style={{ height: 520, borderRadius: 16 }} />
         </div>
       )}
       {state.kind === 'failed' && (
-        <div className="empty panel" role="alert">
+        <Card className="empty" role="alert">
           <p>Could not load. Check your connection.</p>
-          <button className="btn" onClick={() => void load(true)}>
+          <Button size="sm" variant="secondary" onClick={() => void load(true)}>
             Try again
-          </button>
-        </div>
+          </Button>
+        </Card>
       )}
       {state.kind === 'notfound' && (
-        <div className="empty panel">
+        <Card className="empty">
           <h2>Link not found</h2>
-        </div>
+        </Card>
       )}
-      {state.kind === 'ok' && <DetailBody data={state.data} reload={() => load(false)} reloadSeen={() => load(true)} />}
+      {state.kind === 'ok' && <DetailBody data={state.data} reload={() => load(false)} />}
     </>
   );
 }
@@ -222,12 +221,20 @@ function useSuggestions(data: ManagerLinkData, reload: () => Promise<void>) {
   return { draft, visible, minutes, setMinutes, scope, setScope, status, error, setError, addRange, remove, clearAll };
 }
 
-function DetailBody({ data, reload, reloadSeen }: { data: ManagerLinkData; reload: () => Promise<void>; reloadSeen: () => Promise<void> }) {
+const prettyHours = (h: number) => `${Number(h.toFixed(2))} h free`;
+
+/** "Updated today, 10:26 PM" / "Updated yesterday, ..." / "Updated Nov 5, 10:26 AM" */
+function updatedText(ts: number, tz: string) {
+  const days = calDiffDays(todayIn(tz, ts), todayIn(tz));
+  const time = formatTime(ts, tz);
+  if (days === 0) return `Updated today, ${time}`;
+  if (days === 1) return `Updated yesterday, ${time}`;
+  return `Updated ${formatCalShort(todayIn(tz, ts))}, ${time}`;
+}
+
+function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Promise<void> }) {
   const { zone, setZone } = useSession();
-  const call = useManagerCall();
-  // After saving suggested times, re-read with markSeen=true (the same call used on open) so the
-  // updated_at bump from the recruiter's own save does not show up as "New update" on the dashboard.
-  const sug = useSuggestions(data, reloadSeen);
+  const sug = useSuggestions(data, reload);
   const slots = useMemo(() => new Set(data.slots.map((s) => Date.parse(s))), [data.slots]);
   const slotArray = useMemo(() => [...slots], [slots]);
   const suggestions: Suggestion[] = useMemo(
@@ -235,6 +242,9 @@ function DetailBody({ data, reload, reloadSeen }: { data: ManagerLinkData; reloa
     [sug.visible],
   );
   const [pending, setPending] = useState<{ from: number; to: number } | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [label, setLabel] = useState(data.label);
+  const [deactivating, setDeactivating] = useState(false);
 
   /** A click or drag on the calendar. Clicking a suggested time removes it; anything else asks how long the interview is. */
   function onCalendarRange(from: number, to: number) {
@@ -247,15 +257,18 @@ function DetailBody({ data, reload, reloadSeen }: { data: ManagerLinkData; reloa
   const ranks = useMemo(() => new Map(rankedMs.map((t, i) => [t, i + 1])), [rankedMs]);
   const expired = data.status === 'expired';
   const candUrl = `${window.location.origin}/${data.token}`;
+  const status = expired ? null : linkStatus(statusInputFromLink(data), zone);
 
-  // weeks that cover the window, plus any week that holds shared time
+  // weeks that cover the window, plus any week that holds shared time. Weeks wholly in the past are not offered.
   const now = Date.now();
   const today = todayIn(zone, now);
   const weeks = useMemo(() => {
-    const first = mondayOf(today);
+    const dow = new Date(Date.UTC(today.y, today.m - 1, today.d)).getUTCDay();
+    const thisMon = mondayOf(today);
+    const first = dow === 0 || dow === 6 ? addDays(thisMon, 7) : thisMon; // on a weekend this week's Mon-Fri is over
     const lastShared = slotArray.length ? todayIn(zone, Math.max(...slotArray)) : today;
     const lastDay = calDiffDays(today, lastShared) > WINDOW_DAYS ? lastShared : addDays(today, WINDOW_DAYS - 1);
-    const n = Math.floor(calDiffDays(first, mondayOf(lastDay)) / 7) + 1;
+    const n = Math.max(1, Math.floor(calDiffDays(first, mondayOf(lastDay)) / 7) + 1);
     return Array.from({ length: n }, (_, i) => addDays(first, i * 7));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zone, calKey(today), slotArray]);
@@ -271,62 +284,142 @@ function DetailBody({ data, reload, reloadSeen }: { data: ManagerLinkData; reloa
   const idx = Math.min(picked ?? firstWithTime, weeks.length - 1);
   const weekStart = weeks[idx];
   const weekEnd = addDays(weekStart, 4);
+  const weekName = (w: CalDate) => {
+    const fri = addDays(w, 4);
+    return `${formatCalShort(w)} – ${w.m === fri.m ? fri.d : formatCalShort(fri)}`;
+  };
+  function tabKeys(e: ReactKeyboardEvent) {
+    const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const n = Math.min(weeks.length - 1, Math.max(0, idx + d));
+    setPicked(n);
+    requestAnimationFrame(() => document.getElementById(`wk-${n}`)?.focus());
+  }
+
+  // Selected (picked) times and "also free", for the right column and for Copy
+  const picks = rankedMs.map((t, i) => {
+    const s = data.suggested_slots.find((x) => Date.parse(x.start) === t);
+    return { t, rank: i + 1, end: t + (s?.minutes ?? 30) * 60000 };
+  });
+  const freeGroups = groupByDay(slotArray, zone);
+  const copyText = () => {
+    const parts: string[] = [];
+    if (picks.length) parts.push(`Preferred times (${tzLabel(zone)})\n${picks.map((p) => `${p.rank}. ${formatDayLong(p.t, zone)}, ${rangeLabel(p.t, p.end, zone)}`).join('\n')}`);
+    const free = summaryText(slotArray, zone);
+    if (free) parts.push(free);
+    return parts.join('\n\n');
+  };
+  const pickedCount = sug.visible.filter((s) => ranks.has(Date.parse(s.start))).length;
 
   return (
     <>
-      <div className="page-head">
-        <LabelEditor token={data.token} initial={data.label} />
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <CopyButton text={candUrl} className="btn btn-primary">
+      <div className="title-row">
+        <div className="title-left">
+          {renaming ? (
+            <RenameLabel
+              token={data.token}
+              initial={label}
+              onDone={(v) => {
+                if (v != null) setLabel(v);
+                setRenaming(false);
+              }}
+            />
+          ) : (
+            <h1 className="page-title">{label || 'Untitled link'}</h1>
+          )}
+          <div className="title-meta">
+            {status && <StatusChip status={status} />}
+            <span className="title-updated">{updatedText(Date.parse(data.updated_at), zone)}</span>
+          </div>
+          {data.batch.length > 1 && (
+            <div className="batch-list" aria-label="Links in this batch">
+              {data.batch.map((b, i) => (
+                <Link
+                  key={b.token}
+                  className={`batch-tag${b.token === data.token ? ' is-current' : ''}`}
+                  to={`/${b.token}/recruiter`}
+                  aria-current={b.token === data.token ? 'page' : undefined}
+                >
+                  {b.label || `Link ${i + 1}`}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="title-actions">
+          <CopyButton text={candUrl} className="ds-btn ds-btn-md ds-btn-primary">
             Copy link
           </CopyButton>
-          <a className="btn" href={candUrl} target="_blank" rel="noreferrer">
-            <ArrowSquareOut size={16} aria-hidden />
+          <a className="ds-btn ds-btn-md ds-btn-secondary" href={candUrl} target="_blank" rel="noreferrer">
             Preview
           </a>
+          <MoreMenu canDeactivate={!expired} onRename={() => setRenaming(true)} onDeactivate={() => setDeactivating(true)} />
         </div>
       </div>
 
-      {expired && <p className="notice" style={{ marginBottom: 20 }}>This link is inactive.</p>}
+      {expired && <p className="notice">This link is inactive.</p>}
 
-      <div className="detail-grid">
-        <section className="section" aria-label="Availability">
-          <div className="field" style={{ maxWidth: 360 }}>
-            <label htmlFor="rz">Show times in</label>
-            <ZoneCombobox id="rz" value={zone} onChange={setZone} />
+      <div className="detail-cols">
+        <section className="cal-col" aria-label="Availability">
+          <div className="zone-line">
+            <label htmlFor="rz">Times shown in</label>
+            <div className="ds-zone">
+              <ZoneCombobox id="rz" value={zone} onChange={setZone} />
+            </div>
           </div>
 
-          <div className="tabs" role="tablist" aria-label="Weeks">
-            {weeks.map((w, i) => {
-              const h = hoursIn(w);
-              return (
-                <button key={calKey(w)} role="tab" className="tab" aria-selected={i === idx} onClick={() => setPicked(i)}>
-                  {formatCalShort(w)}
-                  <span className="count">{h > 0 ? `${h} h` : '0'}</span>
-                </button>
-              );
-            })}
+          <div className="week-nav">
+            <NavArrow dir="left" label="Previous week" disabled={idx === 0} onClick={() => setPicked(idx - 1)} />
+            <div className="week-tabs" role="tablist" aria-label="Weeks" onKeyDown={tabKeys}>
+              {weeks.map((w, i) => {
+                const h = hoursIn(w);
+                return (
+                  <button
+                    key={calKey(w)}
+                    id={`wk-${i}`}
+                    type="button"
+                    role="tab"
+                    className="week-tab"
+                    aria-selected={i === idx}
+                    tabIndex={i === idx ? 0 : -1}
+                    onClick={() => setPicked(i)}
+                  >
+                    <span>{weekName(w)}</span>
+                    <span>{h > 0 ? prettyHours(h) : '–'}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <NavArrow dir="right" label="Next week" disabled={idx >= weeks.length - 1} onClick={() => setPicked(idx + 1)} />
           </div>
 
-          <AvailabilityGrid
+          <div className="legend-row">
+            <span>
+              <i className="sw sw-free" aria-hidden="true" />
+              Availability
+            </span>
+            <span>
+              <i className="sw sw-picked" aria-hidden="true" />
+              Selected times
+            </span>
+            <span>
+              <i className="sw sw-suggested" aria-hidden="true" />
+              Suggested times
+            </span>
+            {!expired && <strong className="legend-hint">Drag on the calendar to suggest a time</strong>}
+          </div>
+
+          <WeekCalendar
             tz={zone}
             weekStart={weekStart}
             slots={slots}
             suggestions={suggestions}
             ranks={ranks}
-            muteUnpicked
             label={`Candidate availability, ${formatCalShort(weekStart)} to ${formatCalShort(weekEnd)}, in ${tzLabel(zone)}`}
             windowStart={Math.ceil((now + LEAD_MS) / SLOT_MS) * SLOT_MS}
             onSuggestRange={expired ? undefined : onCalendarRange}
           />
-          <GridLegend
-            freeLabel="Candidate's availability"
-            suggestedLabel={ranks.size > 0 ? "Candidate's picks (in order)" : 'Times you suggested'}
-            showSuggested
-            mutedLabel="Not chosen"
-            showMuted={ranks.size > 0 && suggestions.some((s) => !ranks.has(s.start))}
-          />
-          {!expired && <p className="meta">To suggest times, drag on the calendar (15 minute steps), then choose the interview length. Click a suggested time to remove it.</p>}
           {pending && (
             <SuggestDialog
               range={pending}
@@ -344,122 +437,149 @@ function DetailBody({ data, reload, reloadSeen }: { data: ManagerLinkData; reloa
           )}
         </section>
 
-        <div className="side">
-          {suggestions.length > 0 && (
-            <section className="section" aria-labelledby="ranked-h">
-              <h2 id="ranked-h">Their picks</h2>
-              {rankedMs.length === 0 ? (
-                <p className="muted">None yet.</p>
-              ) : (
-                <>
-                  <ol className="ranked">
-                    {rankedMs.map((t, i) => (
-                      <li key={t}>
-                        <span className="n">{i + 1}</span>
-                        <span>{formatDateTime(t, zone)}</span>
-                      </li>
-                    ))}
-                  </ol>
-                  <CopyButton
-                    className="btn btn-sm"
-                    text={`Preferred times (${tzLabel(zone)})\n${rankedMs.map((t, i) => `${i + 1}. ${formatDateTime(t, zone)}`).join('\n')}`}
-                  >
-                    Copy
-                  </CopyButton>
-                </>
-              )}
-            </section>
-          )}
-
-          <div className="section">
-            <Summary starts={slotArray} tz={zone} title="Free times" emptyText="Nothing shared yet." />
-          </div>
-
-          <div className="section">
-            <SuggestEditor data={data} defaultZone={zone} sug={sug} />
-          </div>
-
-          <div className="section">
-            <dl className="facts-list">
-              <div>
-                <dt>Candidate time zone</dt>
-                <dd>{zoneName(data.timezone)}</dd>
-              </div>
-              <div>
-                <dt>Last updated</dt>
-                <dd>{formatStamp(Date.parse(data.updated_at), zone)}</dd>
-              </div>
-              <div>
-                <dt>Created</dt>
-                <dd>{formatCalFull(todayIn(zone, Date.parse(data.created_at)))}</dd>
-              </div>
-              <div>
-                <dt>Expires</dt>
-                <dd>{formatCalFull(todayIn(zone, Date.parse(data.expires_at)))}</dd>
-              </div>
-              <div>
-                <dt>Code</dt>
-                <dd className="mono">{data.token}</dd>
-              </div>
-            </dl>
-            {data.batch.length > 1 && (
-              <div className="batch-list">
-                {data.batch.map((b, i) => (
-                  <Link
-                    key={b.token}
-                    className={`tag${b.token === data.token ? '' : ' tag-quiet'}`}
-                    to={`/${b.token}/recruiter`}
-                    aria-current={b.token === data.token ? 'page' : undefined}
-                  >
-                    {b.label || `Link ${i + 1}`}
-                  </Link>
+        <div className="side-col">
+          <Card className="side-card" aria-labelledby="sel-h">
+            <div className="card-head">
+              <h2 id="sel-h">Selected times</h2>
+              <CopyButton text={copyText} disabled={!picks.length && !freeGroups.length} className="ds-btn ds-btn-sm ds-btn-ghost">
+                Copy
+              </CopyButton>
+            </div>
+            {picks.length === 0 ? (
+              <p className="side-empty">{sug.visible.length ? 'No picks yet.' : 'None yet. Suggest times and the candidate can pick.'}</p>
+            ) : (
+              <ol className="pick-list">
+                {picks.map((p) => (
+                  <li key={p.t}>
+                    <span className="pick-n">{p.rank}</span>
+                    <span>
+                      {formatDayLong(p.t, zone)} · {rangeLabel(p.t, p.end, zone).replace('–', ' – ')}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <h3 className="also-free">Also free</h3>
+            {freeGroups.length === 0 ? (
+              <p className="side-empty">Nothing shared yet.</p>
+            ) : (
+              <div className="free-list">
+                {freeGroups.map((g) => (
+                  <div key={g.key} className="free-row">
+                    <span className="free-day">{g.label}</span>
+                    <span className="free-ranges">
+                      {g.ranges.map((r) => (
+                        <span key={r.start}>{rangeLabel(r.start, r.end, zone).replace('–', ' – ')}</span>
+                      ))}
+                    </span>
+                  </div>
                 ))}
               </div>
             )}
-            {!expired && <Deactivate data={data} call={call} onDone={reload} />}
-          </div>
+          </Card>
+
+          <SuggestedCard data={data} zone={zone} sug={sug} ranks={ranks} pickedCount={pickedCount} expired={expired} />
         </div>
       </div>
+
+      {deactivating && <DeactivateDialog data={data} onClose={() => setDeactivating(false)} onDone={reload} />}
     </>
   );
 }
 
-function LabelEditor({ token, initial }: { token: string; initial: string }) {
+/** "More" button and its menu: Rename link, Deactivate link. */
+function MoreMenu({ canDeactivate, onRename, onDeactivate }: { canDeactivate: boolean; onRename: () => void; onDeactivate: () => void }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(wrap, open, close);
+
+  useEffect(() => {
+    if (open) wrap.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [open]);
+
+  function keys(e: ReactKeyboardEvent) {
+    const items = [...(wrap.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])') ?? [])];
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === 'ArrowDown') items[(i + 1) % items.length]?.focus();
+    else if (e.key === 'ArrowUp') items[(i - 1 + items.length) % items.length]?.focus();
+    else if (e.key === 'Escape' || e.key === 'Tab') {
+      setOpen(false);
+      if (e.key === 'Escape') btn.current?.focus();
+      return;
+    } else return;
+    e.preventDefault();
+  }
+
+  return (
+    <div className="more-wrap" ref={wrap}>
+      <button
+        ref={btn}
+        type="button"
+        className="more-btn"
+        aria-label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <DotsThree size={20} weight="bold" aria-hidden />
+      </button>
+      {open && (
+        <div className="more-menu" role="menu" aria-label="Link actions" onKeyDown={keys}>
+          <button type="button" role="menuitem" className="menu-item" onClick={() => { setOpen(false); onRename(); }}>
+            Rename link
+          </button>
+          <div className="menu-divider" role="separator" />
+          <button type="button" role="menuitem" className="menu-item is-strong" disabled={!canDeactivate} onClick={() => { setOpen(false); onDeactivate(); }}>
+            Deactivate link
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The H1, edited in place. Enter saves, Escape cancels. */
+function RenameLabel({ token, initial, onDone }: { token: string; initial: string; onDone: (saved: string | null) => void }) {
   const call = useManagerCall();
   const [value, setValue] = useState(initial);
-  const [saved, setSaved] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    const v = value.trim();
+    if (v === initial) return onDone(null);
     setBusy(true);
     setError(false);
     try {
-      await call((p) => api.managerSetLabel(p, token, value.trim()));
-      setSaved(value.trim());
-      setValue(value.trim());
+      await call((p) => api.managerSetLabel(p, token, v));
+      onDone(v);
     } catch {
       setError(true);
-    } finally {
       setBusy(false);
     }
   }
 
-  const dirty = value.trim() !== saved;
   return (
-    <form onSubmit={submit} className="label-edit" aria-label="Label">
-      <div className="field">
-        <label htmlFor="label" className="sr-only">
-          Label
-        </label>
-        <input id="label" className="input" value={value} maxLength={120} placeholder="Add a label" onChange={(e) => setValue(e.target.value)} />
-      </div>
-      {dirty && (
-        <button className="btn btn-sm" type="submit" disabled={busy}>
-          {busy ? 'Saving...' : 'Save'}
-        </button>
-      )}
+    <form className="rename" onSubmit={submit} onKeyDown={(e) => e.key === 'Escape' && onDone(null)} aria-label="Rename link">
+      <input
+        className="rename-input"
+        aria-label="Link label"
+        value={value}
+        maxLength={120}
+        placeholder="Add a label"
+        autoFocus
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <Button size="sm" type="submit" disabled={busy}>
+        {busy ? 'Saving...' : 'Save'}
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => onDone(null)}>
+        Cancel
+      </Button>
       {error && (
         <span className="error" role="alert">
           Not saved.
@@ -469,124 +589,99 @@ function LabelEditor({ token, initial }: { token: string; initial: string }) {
   );
 }
 
-function SuggestEditor({
+function SuggestedCard({
   data,
-  defaultZone,
+  zone,
   sug,
+  ranks,
+  pickedCount,
+  expired,
 }: {
   data: ManagerLinkData;
-  defaultZone: string;
+  zone: string;
   sug: ReturnType<typeof useSuggestions>;
+  ranks: Map<number, number>;
+  pickedCount: number;
+  expired: boolean;
 }) {
-  const [szone, setSzone] = useState(defaultZone); // the zone the times are typed in
-  const tomorrow = nextWeekday(todayIn(szone));
-  const [date, setDate] = useState(`${tomorrow.y}-${String(tomorrow.m).padStart(2, '0')}-${String(tomorrow.d).padStart(2, '0')}`);
-  const [time, setTime] = useState('10:00');
-  const [endTime, setEndTime] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [list, setList] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-
-  useEffect(() => setSzone(defaultZone), [defaultZone]);
-
-  function add(e: FormEvent) {
-    e.preventDefault();
-    const [y, m, d] = date.split('-').map(Number);
-    const [h, mi] = time.split(':').map(Number);
-    if (!y || !m || !d || Number.isNaN(h) || Number.isNaN(mi)) {
-      sug.setError('Pick a date and start time.');
-      return;
-    }
-    const from = zonedToUtc(y, m, d, h, mi, szone);
-    let to = from;
-    if (endTime) {
-      const [eh, em] = endTime.split(':').map(Number);
-      to = zonedToUtc(y, m, d, eh, em, szone);
-      if (!(to > from)) {
-        sug.setError('End must be after the start.');
-        return;
-      }
-    }
-    sug.addRange(from, to, szone);
-  }
+  const wrap = useRef<HTMLDivElement>(null);
+  const closeAdd = useCallback(() => setAdding(false), []);
+  useDismiss(wrap, adding, closeAdd);
+  const n = sug.visible.length;
 
   return (
-    <section className="section" aria-labelledby="sug-h" style={{ gap: 16 }}>
-      <div className="summary-head">
-        <h2 id="sug-h">Suggest times</h2>
-        {sug.visible.length > 0 &&
+    <Card className="side-card" aria-labelledby="sug-h">
+      <div className="card-head">
+        <h2 id="sug-h">Suggested times</h2>
+        {n > 0 &&
+          !expired &&
           (confirmClear ? (
-            <div role="group" aria-label="Confirm clear all" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span className="meta">Remove all {sug.visible.length}?</span>
-              <button
-                type="button"
-                className="btn btn-sm btn-danger"
+            <div role="group" aria-label="Confirm clear all" className="confirm-inline">
+              <span>Remove all {n}?</span>
+              <Button
+                size="sm"
                 onClick={() => {
-                  sug.clearAll(szone);
+                  sug.clearAll(zone);
                   setConfirmClear(false);
                 }}
               >
                 Remove all
-              </button>
-              <button type="button" className="btn btn-sm" onClick={() => setConfirmClear(false)}>
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmClear(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           ) : (
-            <button type="button" className="btn btn-sm btn-quiet" onClick={() => setConfirmClear(true)}>
+            <button type="button" className="text-btn" onClick={() => setConfirmClear(true)}>
               Clear all
             </button>
           ))}
       </div>
-
-      <div className="field">
-        <label htmlFor="sz">In time zone</label>
-        <ZoneCombobox id="sz" value={szone} onChange={setSzone} />
-      </div>
-
-      {sug.visible.length > 0 && (
-        <ul className="chips" style={{ listStyle: 'none', margin: 0, padding: 0 }} aria-label="Suggested times">
-          {sug.visible.map((s) => (
-            <li key={s.start} className="chip">
-              <span>
-                {formatDateTime(Date.parse(s.start), szone)}, {s.minutes} min
-              </span>
-              <button type="button" aria-label={`Remove ${formatDateTime(Date.parse(s.start), szone)}`} onClick={() => sug.remove(s.start, szone)}>
-                <X size={14} />
-              </button>
-            </li>
-          ))}
+      <p className="sug-count">
+        {n === 0 ? (
+          'No suggested times yet'
+        ) : (
+          <>
+            {n} suggested · <b>{pickedCount} picked</b>
+          </>
+        )}
+      </p>
+      {!expired && (
+        <div className="sug-actions" ref={wrap}>
+          <Button size="md" variant="secondary" aria-haspopup="dialog" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
+            <Plus size={16} weight="bold" aria-hidden /> Add a time
+          </Button>
+          <Button size="md" variant="ghost" aria-expanded={list} aria-controls="sug-list" onClick={() => setList((l) => !l)}>
+            {list ? 'Hide list' : 'Show as list'}
+          </Button>
+          {adding && <AddTimePopover zone={zone} sug={sug} onClose={() => setAdding(false)} />}
+        </div>
+      )}
+      {list && (
+        <ul id="sug-list" className="sug-list" aria-label="Suggested times">
+          {n === 0 && <li className="side-empty">Nothing suggested yet.</li>}
+          {sug.visible.map((s) => {
+            const t = Date.parse(s.start);
+            return (
+              <li key={s.start}>
+                <span>
+                  {formatDayLong(t, zone)} · {rangeLabel(t, t + s.minutes * 60000, zone).replace('–', ' – ')}
+                  {ranks.has(t) && <Badge>Picked #{ranks.get(t)}</Badge>}
+                </span>
+                {!expired && (
+                  <button type="button" className="ds-icon-btn" aria-label={`Remove ${formatDayLong(t, zone)} ${formatTime(t, zone)}`} onClick={() => sug.remove(s.start, zone)}>
+                    <X weight="bold" aria-hidden />
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
-
-      <form className="suggest-form" onSubmit={add} noValidate>
-        <div className="field">
-          <label htmlFor="s-date">Date</label>
-          <input id="s-date" className="input" type="date" value={date} onChange={(e) => sug.setError(null) ?? setDate(e.target.value)} />
-        </div>
-        <div className="field">
-          <label htmlFor="s-len">Interview length</label>
-          <select id="s-len" className="select" value={sug.minutes} onChange={(e) => sug.setMinutes(e.target.value)}>
-            {[15, 30, 45, 60, 90].map((m) => (
-              <option key={m} value={m}>
-                {m} min
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="s-time">From</label>
-          <input id="s-time" className="input" type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} />
-        </div>
-        <div className="field">
-          <label htmlFor="s-end">To (optional, for a range)</label>
-          <input id="s-end" className="input" type="time" step={900} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-        </div>
-        <button className="btn btn-primary" type="submit">
-          <Plus size={16} weight="bold" aria-hidden />
-          Add
-        </button>
-      </form>
-
-      {data.batch.length > 1 && (
+      {data.batch.length > 1 && !expired && (
         <div className="radios" role="radiogroup" aria-label="Apply to">
           <label>
             <input type="radio" name="scope" checked={sug.scope === 'this'} onChange={() => sug.setScope('this')} />
@@ -598,8 +693,7 @@ function SuggestEditor({
           </label>
         </div>
       )}
-
-      {sug.error && (
+      {!adding && sug.error && (
         <p className="error" role="alert">
           {sug.error}
         </p>
@@ -607,7 +701,131 @@ function SuggestEditor({
       <p className="hint" role="status" aria-live="polite">
         {sug.status === 'saving' ? 'Saving...' : sug.status === 'saved' ? 'Saved' : ''}
       </p>
-    </section>
+    </Card>
+  );
+}
+
+/** The date / length / from / to form, in the page's time zone. */
+function AddTimePopover({ zone, sug, onClose }: { zone: string; sug: ReturnType<typeof useSuggestions>; onClose: () => void }) {
+  const tomorrow = nextWeekday(todayIn(zone));
+  const [date, setDate] = useState(`${tomorrow.y}-${String(tomorrow.m).padStart(2, '0')}-${String(tomorrow.d).padStart(2, '0')}`);
+  const [time, setTime] = useState('10:00');
+  const [endTime, setEndTime] = useState('');
+
+  function add(e: FormEvent) {
+    e.preventDefault();
+    const [y, m, d] = date.split('-').map(Number);
+    const [h, mi] = time.split(':').map(Number);
+    if (!y || !m || !d || Number.isNaN(h) || Number.isNaN(mi)) {
+      sug.setError('Pick a date and start time.');
+      return;
+    }
+    const from = zonedToUtc(y, m, d, h, mi, zone);
+    let to = from;
+    if (endTime) {
+      const [eh, em] = endTime.split(':').map(Number);
+      to = zonedToUtc(y, m, d, eh, em, zone);
+      if (!(to > from)) {
+        sug.setError('End must be after the start.');
+        return;
+      }
+    }
+    if (sug.addRange(from, to, zone) === null) onClose();
+  }
+
+  return (
+    <form className="add-pop ds-card" role="dialog" aria-label="Add a time" onSubmit={add} noValidate onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <TextInput label="Date" type="date" value={date} autoFocus onChange={(e) => { sug.setError(null); setDate(e.target.value); }} />
+      <div className="ds-field">
+        <label className="ds-label" htmlFor="s-len">
+          Interview length
+        </label>
+        <Select id="s-len" value={sug.minutes} onChange={(e) => sug.setMinutes(e.target.value)}>
+          {[15, 30, 45, 60, 90].map((m) => (
+            <option key={m} value={m}>
+              {m} min
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="add-pop-times">
+        <TextInput label="From" type="time" step={900} value={time} onChange={(e) => setTime(e.target.value)} />
+        <TextInput label="To (optional)" type="time" step={900} value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+      </div>
+      {sug.error && (
+        <p className="error" role="alert">
+          {sug.error}
+        </p>
+      )}
+      <div className="add-pop-actions">
+        <Button size="md" variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button size="md" type="submit">
+          Add
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** Confirm before deactivating: same wording and batch choice as before, now in a dialog. */
+function DeactivateDialog({ data, onClose, onDone }: { data: ManagerLinkData; onClose: () => void; onDone: () => Promise<void> }) {
+  const call = useManagerCall();
+  const ref = useRef<HTMLDialogElement>(null);
+  const [scope, setScope] = useState<'this' | 'batch'>('this');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+
+  async function go() {
+    setBusy(true);
+    setError(false);
+    try {
+      await call((p) => api.managerDeactivate(p, data.token, scope === 'batch'));
+      await onDone();
+      onClose();
+    } catch {
+      setError(true);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <dialog ref={ref} className="dlg" aria-labelledby="deact-h" onClose={onClose} onCancel={onClose}>
+      <div className="dlg-body" role="group">
+        <h2 id="deact-h">Deactivate this link?</h2>
+        <p>Candidates will see the link as inactive. This cannot be undone.</p>
+        {data.batch.length > 1 && (
+          <div className="radios">
+            <label>
+              <input type="radio" name="dscope" checked={scope === 'this'} onChange={() => setScope('this')} />
+              This link
+            </label>
+            <label>
+              <input type="radio" name="dscope" checked={scope === 'batch'} onChange={() => setScope('batch')} />
+              All {data.batch.length} in batch
+            </label>
+          </div>
+        )}
+        {error && (
+          <p className="error" role="alert">
+            Could not deactivate.
+          </p>
+        )}
+        <div className="dlg-actions">
+          <Button size="md" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button size="md" className="btn-danger-ds" onClick={go} disabled={busy}>
+            {busy ? 'Deactivating...' : 'Deactivate'}
+          </Button>
+        </div>
+      </div>
+    </dialog>
   );
 }
 
@@ -674,83 +892,14 @@ function SuggestDialog({
           </p>
         )}
         <div className="dlg-actions">
-          <button type="button" className="btn" onClick={onCancel}>
+          <Button size="md" variant="secondary" onClick={onCancel}>
             Cancel
-          </button>
-          <button type="submit" className="btn btn-primary" disabled={tooMany}>
+          </Button>
+          <Button size="md" type="submit" disabled={tooMany}>
             Add
-          </button>
+          </Button>
         </div>
       </form>
     </dialog>
-  );
-}
-
-function Deactivate({
-  data,
-  call,
-  onDone,
-}: {
-  data: ManagerLinkData;
-  call: ReturnType<typeof useManagerCall>;
-  onDone: () => Promise<void>;
-}) {
-  const [asking, setAsking] = useState(false);
-  const [scope, setScope] = useState<'this' | 'batch'>('this');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
-
-  async function go() {
-    setBusy(true);
-    setError(false);
-    try {
-      await call((p) => api.managerDeactivate(p, data.token, scope === 'batch'));
-      await onDone();
-      setAsking(false);
-    } catch {
-      setError(true);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!asking) {
-    return (
-      <div>
-        <button className="btn btn-danger btn-sm" onClick={() => setAsking(true)}>
-          Deactivate
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div style={{ display: 'grid', gap: 12 }} role="group" aria-label="Confirm deactivate">
-      <p>Candidates will see the link as inactive. This cannot be undone.</p>
-      {data.batch.length > 1 && (
-        <div className="radios">
-          <label>
-            <input type="radio" name="dscope" checked={scope === 'this'} onChange={() => setScope('this')} />
-            This link
-          </label>
-          <label>
-            <input type="radio" name="dscope" checked={scope === 'batch'} onChange={() => setScope('batch')} />
-            All {data.batch.length} in batch
-          </label>
-        </div>
-      )}
-      {error && (
-        <p className="error" role="alert">
-          Could not deactivate.
-        </p>
-      )}
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button className="btn btn-danger" onClick={go} disabled={busy}>
-          {busy ? 'Deactivating...' : 'Deactivate'}
-        </button>
-        <button className="btn" onClick={() => setAsking(false)}>
-          Cancel
-        </button>
-      </div>
-    </div>
   );
 }

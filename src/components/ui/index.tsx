@@ -1,6 +1,6 @@
 import {
   useEffect, useId, useRef, useState,
-  type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type HTMLAttributes,
+  type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type HTMLAttributes,
 } from 'react';
 import { CaretDown, Check, Copy, Minus, Plus } from '@phosphor-icons/react';
 import { copyText } from '../../lib/clipboard';
@@ -17,7 +17,7 @@ export function Button({
 }
 
 /* Tooltip: hover or keyboard focus, after 300ms, above and centered */
-export function Tooltip({ label, children }: { label: string; children: ReactNode }) {
+export function Tooltip({ label, children, className, style }: { label: string; children: ReactNode; className?: string; style?: CSSProperties }) {
   const [open, setOpen] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   const id = useId();
@@ -32,7 +32,8 @@ export function Tooltip({ label, children }: { label: string; children: ReactNod
   };
   return (
     <span
-      className="ds-tip-wrap"
+      className={cx('ds-tip-wrap', className)}
+      style={style}
       onMouseEnter={show}
       onMouseLeave={hide}
       onFocus={show}
@@ -152,5 +153,16 @@ export function Stepper({
         </button>
       </div>
     </div>
+  );
+}
+
+/* NavArrow: round previous / next button (week navigation) */
+export function NavArrow({ dir, label, disabled, onClick }: { dir: 'left' | 'right'; label: string; disabled?: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="nav-arrow" aria-label={label} disabled={disabled} onClick={onClick}>
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points={dir === 'left' ? '11 3.5 5.5 9 11 14.5' : '7 3.5 12.5 9 7 14.5'} />
+      </svg>
+    </button>
   );
 }

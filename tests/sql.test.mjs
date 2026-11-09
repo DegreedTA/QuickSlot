@@ -72,6 +72,18 @@ await q(`select public.set_availability($1, $2::timestamptz[], 'America/New_York
 ov = (await q(`select public.manager_overview($1) as r`, [PW]))[0].r;
 ok('new candidate edit re-flags', ov.links.find((l) => l.token === tokA).has_unseen_change === true);
 
+// a recruiter saving suggested times must not look like a candidate update
+{
+  await q(`select public.manager_get_link($1, $2, true)`, [PW, tokA]);
+  const sug = JSON.stringify([{ start: new Date(Math.ceil((Date.now() + 5 * 86400e3) / 900000) * 900000).toISOString(), minutes: 30 }]);
+  await q(`select public.manager_set_suggestions($1, array[$2], $3::jsonb, 'UTC')`, [PW, tokA, sug]);
+  const r = (await q(`select public.manager_overview($1) as r`, [PW]))[0].r.links.find((l) => l.token === tokA);
+  ok('recruiter saving suggestions does not flag unseen', r.has_unseen_change === false, JSON.stringify(r));
+  await q(`select public.set_availability($1, $2::timestamptz[], 'UTC')`, [tokA, [new Date(Math.ceil((Date.now() + 6 * 86400e3) / 900000) * 900000).toISOString()]]);
+  const r2 = (await q(`select public.manager_overview($1) as r`, [PW]))[0].r.links.find((l) => l.token === tokA);
+  ok('candidate saving availability flags unseen', r2.has_unseen_change === true);
+}
+
 // overview: upcoming times only for active, answered, seen links
 {
   const row2 = (await q(`select public.manager_overview($1) as r`, [PW]))[0].r.links.find((l) => l.token === tokA);

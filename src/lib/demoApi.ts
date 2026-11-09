@@ -22,6 +22,8 @@ interface Row {
   created_at: string;
   expires_at: string;
   updated_at: string;
+  /** last change by the candidate; older stored rows fall back to updated_at */
+  candidate_updated_at?: string;
   recruiter_viewed_at: string | null;
   active: boolean;
   timezone: string;
@@ -232,7 +234,7 @@ export function createDemoApi(): Api {
       if (!r || !live(r)) throw new ApiError('link_unavailable');
       r.slots = clean(slots);
       r.timezone = timezone;
-      r.updated_at = new Date().toISOString();
+      r.updated_at = r.candidate_updated_at = new Date().toISOString();
       save(s);
       return delay(r.updated_at);
     },
@@ -242,7 +244,7 @@ export function createDemoApi(): Api {
       if (!r || !live(r)) throw new ApiError('link_unavailable');
       const allowed = new Set(r.suggested_slots.map((x) => Date.parse(x.start)));
       r.ranked_choices = choices.filter((c) => allowed.has(Date.parse(c)));
-      r.updated_at = new Date().toISOString();
+      r.updated_at = r.candidate_updated_at = new Date().toISOString();
       save(s);
       return delay(r.updated_at);
     },
@@ -266,7 +268,7 @@ export function createDemoApi(): Api {
           slot_count: r.slots.length,
           next_slot: r.slots.map((x) => Date.parse(x)).filter((t) => t > Date.now()).sort((a, b) => a - b).map((t) => new Date(t).toISOString())[0] ?? null,
           has_unseen_change:
-            Date.parse(r.updated_at) > (r.recruiter_viewed_at ? Date.parse(r.recruiter_viewed_at) : -Infinity) &&
+            Date.parse(r.candidate_updated_at ?? r.updated_at) > (r.recruiter_viewed_at ? Date.parse(r.recruiter_viewed_at) : -Infinity) &&
             r.slots.length + r.ranked_choices.length > 0,
           suggested_count: r.suggested_slots.length,
           ranked_count: r.ranked_choices.length,
@@ -277,7 +279,7 @@ export function createDemoApi(): Api {
             const seen =
               live(r) &&
               r.slots.length + r.ranked_choices.length > 0 &&
-              Date.parse(r.updated_at) <= (r.recruiter_viewed_at ? Date.parse(r.recruiter_viewed_at) : -Infinity);
+              Date.parse(r.candidate_updated_at ?? r.updated_at) <= (r.recruiter_viewed_at ? Date.parse(r.recruiter_viewed_at) : -Infinity);
             const inWin = (iso: string) => Date.parse(iso) > now && Date.parse(iso) < now + 8 * DAY;
             return {
               upcoming_slots: seen ? r.slots.filter(inWin).sort() : [],

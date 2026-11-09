@@ -1,4 +1,4 @@
-import type { LinkRow } from './types';
+import type { LinkRow, ManagerLinkData, SuggestedSlot } from './types';
 import type { Status } from '../components/ui';
 import { FEW_THRESHOLD_MINUTES, WEEKEND_USES_NEXT_WEEK } from './statusConfig';
 import { SLOT_MS, addDays, mondayOf, todayIn, zonedToUtc } from './time';
@@ -13,8 +13,25 @@ export function weekWindow(tz: string, now = Date.now()): [number, number] {
   return [zonedToUtc(mon.y, mon.m, mon.d, 0, 0, tz), zonedToUtc(sat.y, sat.m, sat.d, 0, 0, tz)];
 }
 
+/** What the status rules need. A dashboard LinkRow already has all of it. */
+export type StatusInput = Pick<LinkRow, 'has_unseen_change' | 'slot_count' | 'ranked_count' | 'suggested_count' | 'upcoming_slots' | 'upcoming_picks'>;
+
+/** The detail page has the full link, so build the same input from it. Opening a link marks it seen, hence no unseen change. */
+export function statusInputFromLink(d: ManagerLinkData): StatusInput {
+  const picked = new Set(d.ranked_choices.map((x) => Date.parse(x)));
+  const picks: SuggestedSlot[] = d.suggested_slots.filter((x) => picked.has(Date.parse(x.start)));
+  return {
+    has_unseen_change: false,
+    slot_count: d.slots.length,
+    ranked_count: d.ranked_choices.length,
+    suggested_count: d.suggested_slots.length,
+    upcoming_slots: d.slots,
+    upcoming_picks: picks,
+  };
+}
+
 /** Minutes of valid time: candidate availability + picks that start in the future inside the window. Overlaps count once. */
-export function validMinutes(l: LinkRow, tz: string, now = Date.now()): number {
+export function validMinutes(l: StatusInput, tz: string, now = Date.now()): number {
   const [from, to] = weekWindow(tz, now);
   const spans: [number, number][] = [];
   for (const s of l.upcoming_slots) spans.push([Date.parse(s), Date.parse(s) + SLOT_MS]);
@@ -31,7 +48,7 @@ export function validMinutes(l: LinkRow, tz: string, now = Date.now()): number {
 }
 
 /** Exactly one status per active link, evaluated in this order. */
-export function linkStatus(l: LinkRow, tz: string, now = Date.now()): Status {
+export function linkStatus(l: StatusInput, tz: string, now = Date.now()): Status {
   if (l.has_unseen_change) return 'New update';
   const answered = l.slot_count + l.ranked_count > 0;
   if (!answered) return l.suggested_count > 0 ? 'Waiting for picks' : 'Waiting for availability';
