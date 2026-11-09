@@ -28,6 +28,7 @@ create table if not exists public.links (
   created_at                timestamptz not null default now(),
   expires_at                timestamptz not null default now() + interval '90 days',
   updated_at                timestamptz not null default now(), -- last candidate/recruiter change
+  candidate_updated_at      timestamptz not null default now(), -- last change made by the CANDIDATE (drives "New update")
   recruiter_viewed_at       timestamptz,                        -- last time a recruiter opened it
   active                    boolean not null default true,
   timezone                  text not null default 'UTC',        -- candidate's chosen zone
@@ -171,7 +172,8 @@ begin
   update public.links
      set slots = public._clean_instants(p_slots),
          timezone = p_timezone,
-         updated_at = now()
+         updated_at = now(),
+         candidate_updated_at = now()
    where token = l.token
   returning updated_at into ts;
   return ts;
@@ -197,7 +199,8 @@ begin
            from unnest(coalesce(p_choices, '{}')) with ordinality as u(c, ord)
            where c = any (allowed)
          ), '{}'),
-         updated_at = now()
+         updated_at = now(),
+         candidate_updated_at = now()
    where token = l.token
   returning updated_at into ts;
   return ts;
@@ -236,7 +239,7 @@ begin
           (l.active and l.expires_at > now()) as is_active,
           cardinality(l.slots) as slot_count,
           (select min(t) from unnest(l.slots) t where t > now()) as next_slot,
-          (l.updated_at > coalesce(l.recruiter_viewed_at, '-infinity'::timestamptz)
+          (l.candidate_updated_at > coalesce(l.recruiter_viewed_at, '-infinity'::timestamptz)
              and cardinality(l.slots) + cardinality(l.ranked_choices) > 0) as has_unseen_change,
           jsonb_array_length(l.suggested_slots) as suggested_count,
           cardinality(l.ranked_choices) as ranked_count,
@@ -246,13 +249,13 @@ begin
           -- of this week, or of next week when it is the weekend). Empty otherwise to keep this small.
           case when l.active and l.expires_at > now()
                  and cardinality(l.slots) + cardinality(l.ranked_choices) > 0
-                 and l.updated_at <= coalesce(l.recruiter_viewed_at, '-infinity'::timestamptz)
+                 and l.candidate_updated_at <= coalesce(l.recruiter_viewed_at, '-infinity'::timestamptz)
                then coalesce((select jsonb_agg(t order by t) from unnest(l.slots) t
                                where t > now() and t < now() + interval '8 days'), '[]'::jsonb)
                else '[]'::jsonb end as upcoming_slots,
           case when l.active and l.expires_at > now()
                  and cardinality(l.slots) + cardinality(l.ranked_choices) > 0
-                 and l.updated_at <= coalesce(l.recruiter_viewed_at, '-infinity'::timestamptz)
+                 and l.candidate_updated_at <= coalesce(l.recruiter_viewed_at, '-infinity'::timestamptz)
                then coalesce((select jsonb_agg(sg order by (sg->>'start')::timestamptz)
                                 from jsonb_array_elements(l.suggested_slots) sg
                                where (sg->>'start')::timestamptz = any (l.ranked_choices)
