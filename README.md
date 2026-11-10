@@ -92,7 +92,8 @@ Things to know:
 | No marker for changes | "New update" mark until a recruiter opens the link |
 | Plain time zone dropdown | Type a city or zone ("nyc", "brasil", "pst", "gmt-3"); recruiters can suggest times in any zone and candidates see them converted |
 | Slots could be picked at any time | Nothing sooner than 3 hours from now can be picked (set in `src/lib/time.ts`). Availability and suggested times snap to 15 minutes |
-| Plain white form look | New look: tide-band availability, deep teal shell, tabular numbers |
+| Plain white form look | New look: the Degreed design system (True Blue pills, Inter, white cards), sky-blue availability and orange picks, tabular numbers. See `DESIGN.md` |
+| Any amount of availability accepted | Weekly minimums for candidates: 4 h this week Mon-Wed, 2 h Thu-Fri, and 4 h next week on Fri-Sun (set in `src/lib/statusConfig.ts`) |
 
 ## Folder guide
 
