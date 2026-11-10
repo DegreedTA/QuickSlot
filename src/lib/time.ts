@@ -177,28 +177,45 @@ export function cityOf(tz: string): string {
   return parts.length > 2 ? `${last} (${parts[1].replace(/_/g, ' ')})` : last;
 }
 
+/**
+ * What the time zone box offers before anyone types, in this order. Time zones, not cities: a
+ * city only shows up once someone types it (and picking it selects that city's zone).
+ * Arizona is left out on purpose: it is Mountain Time, and typing "Arizona" still finds it.
+ */
+export const SUGGESTED_ZONES = [
+  'America/New_York', // US Eastern
+  'America/Denver', // US Mountain
+  'America/Chicago', // US Central
+  'America/Los_Angeles', // US Pacific
+  'America/Sao_Paulo', // Brasília
+  'Asia/Kolkata', // India
+  'Europe/London', // UK & Ireland
+  'Europe/Paris', // Central Europe
+  'Europe/Athens', // Eastern Europe
+];
+
 /** Zones most candidates and recruiters will use, with names people recognise. */
 export const COMMON_ZONES: [string, string][] = [
-  ['America/Los_Angeles', 'US Pacific Time'],
-  ['America/Denver', 'US Mountain Time'],
-  ['America/Phoenix', 'Arizona'],
-  ['America/Chicago', 'US Central Time'],
   ['America/New_York', 'US Eastern Time'],
+  ['America/Denver', 'US Mountain Time'],
+  ['America/Chicago', 'US Central Time'],
+  ['America/Los_Angeles', 'US Pacific Time'],
+  ['America/Phoenix', 'Arizona'],
   ['America/Halifax', 'Atlantic Canada'],
   ['America/Anchorage', 'Alaska'],
   ['Pacific/Honolulu', 'Hawaii'],
   ['America/Mexico_City', 'Mexico City'],
   ['America/Bogota', 'Bogota'],
-  ['America/Sao_Paulo', 'Sao Paulo'],
+  ['America/Sao_Paulo', 'Brasília Time'],
   ['America/Argentina/Buenos_Aires', 'Buenos Aires'],
   ['UTC', 'UTC'],
-  ['Europe/London', 'London'],
+  ['Europe/London', 'UK & Ireland Time'],
   ['Europe/Dublin', 'Dublin'],
   ['Europe/Lisbon', 'Lisbon'],
   ['Europe/Berlin', 'Central Europe, Berlin'],
-  ['Europe/Paris', 'Central Europe, Paris'],
+  ['Europe/Paris', 'Central European Time'],
   ['Europe/Madrid', 'Central Europe, Madrid'],
-  ['Europe/Athens', 'Eastern Europe, Athens'],
+  ['Europe/Athens', 'Eastern European Time'],
   ['Europe/Istanbul', 'Istanbul'],
   ['Europe/Moscow', 'Moscow'],
   ['Africa/Lagos', 'Lagos'],
@@ -207,7 +224,7 @@ export const COMMON_ZONES: [string, string][] = [
   ['Africa/Nairobi', 'Nairobi'],
   ['Asia/Dubai', 'Dubai'],
   ['Asia/Karachi', 'Karachi'],
-  ['Asia/Kolkata', 'India, Kolkata'],
+  ['Asia/Kolkata', 'India Standard Time'],
   ['Asia/Dhaka', 'Dhaka'],
   ['Asia/Bangkok', 'Bangkok'],
   ['Asia/Singapore', 'Singapore'],
@@ -222,7 +239,7 @@ export const COMMON_ZONES: [string, string][] = [
 ];
 const FRIENDLY = new Map(COMMON_ZONES);
 // Older names some browsers report for the same places.
-FRIENDLY.set('Asia/Calcutta', 'India, Kolkata');
+FRIENDLY.set('Asia/Calcutta', 'India Standard Time');
 FRIENDLY.set('America/Buenos_Aires', 'Buenos Aires');
 FRIENDLY.set('Asia/Saigon', 'Ho Chi Minh City');
 

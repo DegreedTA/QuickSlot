@@ -84,6 +84,39 @@ ok('new candidate edit re-flags', ov.links.find((l) => l.token === tokA).has_uns
   ok('candidate saving availability flags unseen', r2.has_unseen_change === true);
 }
 
+// the candidate's own change time is exposed, and recruiter edits do not move it
+{
+  const get = async () => (await q(`select public.manager_get_link($1, $2, false) as r`, [PW, tokA]))[0].r;
+  const ov1 = (await q(`select public.manager_overview($1) as r`, [PW]))[0].r.links.find((l) => l.token === tokA);
+  const g1 = await get();
+  ok('overview and link expose candidate_updated_at', !!ov1.candidate_updated_at && g1.candidate_updated_at === ov1.candidate_updated_at);
+  await new Promise((r) => setTimeout(r, 20));
+  const sg2 = JSON.stringify([{ start: new Date(Math.ceil((Date.now() + 7 * 86400e3) / 900000) * 900000).toISOString(), minutes: 45 }]);
+  await q(`select public.manager_set_suggestions($1, array[$2], $3::jsonb, 'UTC')`, [PW, tokA, sg2]);
+  const g2 = await get();
+  ok('recruiter adding a suggestion keeps candidate_updated_at', g2.candidate_updated_at === g1.candidate_updated_at && g2.updated_at !== g1.updated_at, JSON.stringify([g1, g2]));
+}
+
+// picked suggestions survive "clear all" and replacing the list, for one link and for a batch
+{
+  const mk = (days) => new Date(Math.ceil((Date.now() + days * 86400e3) / 900000) * 900000).toISOString();
+  const [a, b, c] = [mk(8), mk(9), mk(10)];
+  const batch = (await q(`select public.manager_create_links($1, 2, array['P 1','P 2']) as r`, [PW]))[0].r.links.map((l) => l.token);
+  const sugg = JSON.stringify([a, b, c].map((start) => ({ start, minutes: 30 })));
+  await q(`select public.manager_set_suggestions($1, $2::text[], $3::jsonb, 'UTC')`, [PW, batch, sugg]);
+  await q(`select public.set_ranked_choices($1, $2::timestamptz[])`, [batch[0], [b]]); // link 1 picks b
+  await q(`select public.set_ranked_choices($1, $2::timestamptz[])`, [batch[1], [c]]); // link 2 picks c
+  await q(`select public.manager_set_suggestions($1, $2::text[], '[]'::jsonb, 'UTC')`, [PW, batch]); // clear all, whole batch
+  const g = async (t) => (await q(`select public.manager_get_link($1, $2, false) as r`, [PW, t]))[0].r;
+  const l1 = await g(batch[0]), l2 = await g(batch[1]);
+  const starts = (l) => l.suggested_slots.map((x) => Date.parse(x.start));
+  ok('clear all keeps what each link picked', JSON.stringify(starts(l1)) === JSON.stringify([Date.parse(b)]) && JSON.stringify(starts(l2)) === JSON.stringify([Date.parse(c)]), JSON.stringify([l1.suggested_slots, l2.suggested_slots]));
+  ok('picks are still picks after clear all', l1.ranked_choices.length === 1 && l2.ranked_choices.length === 1);
+  await q(`select public.manager_set_suggestions($1, array[$2], $3::jsonb, 'UTC')`, [PW, batch[0], JSON.stringify([{ start: a, minutes: 30 }])]);
+  const l1b = await g(batch[0]);
+  ok('replacing the list keeps the pick and adds the new time', JSON.stringify(starts(l1b)) === JSON.stringify([Date.parse(a), Date.parse(b)]), JSON.stringify(l1b.suggested_slots));
+}
+
 // overview: upcoming times only for active, answered, seen links
 {
   const row2 = (await q(`select public.manager_overview($1) as r`, [PW]))[0].r.links.find((l) => l.token === tokA);
@@ -133,7 +166,8 @@ const rg = (await q(`select public.get_link($1) as r`, [batchToks[0]]))[0].r;
 ok('ranking keeps order and drops non-suggested', rg.ranked_choices.length === 2 && new Date(rg.ranked_choices[0]).getTime() === new Date(pick[1]).getTime(), JSON.stringify(rg.ranked_choices));
 await q(`select public.manager_set_suggestions($1, $2::text[], $3::jsonb, 'UTC')`, [PW, [batchToks[0]], JSON.stringify([{ start: pick[0], minutes: 30 }])]);
 const rg2 = (await q(`select public.get_link($1) as r`, [batchToks[0]]))[0].r;
-ok('changing suggestions prunes stale ranked picks', rg2.ranked_choices.length === 1);
+// picked times are part of the candidate's availability: changing the list never takes them away
+ok('changing suggestions keeps the candidate\'s picks', rg2.ranked_choices.length === 2 && rg2.suggested_slots.length === 2, JSON.stringify([rg2.ranked_choices, rg2.suggested_slots]));
 const mg = (await q(`select public.manager_get_link($1, $2) as r`, [PW, batchToks[1]]))[0].r;
 ok('manager sees batch mates', mg.batch.length === 3);
 

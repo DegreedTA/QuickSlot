@@ -3,10 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { CaretDown, CaretRight, X } from '@phosphor-icons/react';
 import { ManagerShell } from '../components/ManagerShell';
 import { CopyButton } from '../components/CopyButton';
-import { Button, Card, CopyIconButton, Stepper, StatusChip, TextInput, type Status } from '../components/ui';
+import { Button, Card, CopyIconButton, IconButton, Stepper, StatusChip, TextInput, type Status } from '../components/ui';
 import { useManagerCall } from '../lib/session';
 import { api } from '../lib/api';
-import { batchLabel, isWaiting, lastUpdateAt, linkStatus, relativeTime } from '../lib/linkStatus';
+import { batchLabel, hasAnswered, isWaiting, lastUpdateAt, linkStatus, relativeTime } from '../lib/linkStatus';
 import { browserZone } from '../lib/time';
 import { ApiError, type CreatedLinks, type LinkRow } from '../lib/types';
 
@@ -70,7 +70,7 @@ function Links() {
       .filter((l) => l.is_active)
       .map((l) => {
         const status = linkStatus(l, tz, now);
-        return { l, status, at: lastUpdateAt(l, status), unseen: status === 'New update' };
+        return { l, status, at: lastUpdateAt(l), unseen: status === 'New update' };
       });
   }, [data]);
 
@@ -201,9 +201,9 @@ function Links() {
           <table className="links">
               <colgroup>
                 <col style={{ width: 64 }} />
+                <col style={{ width: 360 }} />
+                <col style={{ width: 260 }} />
                 <col />
-                <col style={{ width: 252 }} />
-                <col style={{ width: 200 }} />
               </colgroup>
               <thead>
                 <tr>
@@ -232,7 +232,8 @@ function Links() {
 }
 
 function updateText(i: Item) {
-  return (isWaiting(i.status) ? 'Created ' : '') + relativeTime(i.at).replace(/^Just now$/, isWaiting(i.status) ? 'just now' : 'Just now');
+  const created = !hasAnswered(i.l); // nothing from the candidate yet: show when the link was created
+  return (created ? 'Created ' : '') + relativeTime(i.at).replace(/^Just now$/, created ? 'just now' : 'Just now');
 }
 
 function LinkRowView({ item: i, child }: { item: Item; child?: boolean }) {
@@ -240,7 +241,7 @@ function LinkRowView({ item: i, child }: { item: Item; child?: boolean }) {
   return (
     <tr className={[i.unseen ? 'is-unseen' : '', child ? 'is-child' : ''].join(' ').trim() || undefined}>
       <td className="cell-copy">
-        <CopyIconButton text={candidateUrl(i.l.token)} />
+        <CopyIconButton text={candidateUrl(i.l.token)} tipAlign="start" />
       </td>
       <td>
         <Link to={`/${i.l.token}/recruiter`} className={`row-link${i.unseen ? ' is-unseen' : ''}${child ? ' is-child' : ''}`}>
@@ -348,32 +349,30 @@ function CreateForm({ onCreated }: { onCreated: (c: CreatedLinks) => void }) {
 function CreatedList({ created, onDismiss }: { created: CreatedLinks; onDismiss: () => void }) {
   const all = created.links.map((l) => `${l.label ? l.label + ': ' : ''}${candidateUrl(l.token)}`).join('\n');
   return (
-    <section className="panel panel-pad" style={{ marginTop: 16 }} aria-label="New links" role="status">
-      <div className="summary-head">
+    <Card className="created-card" aria-label="New links" role="status">
+      <div className="created-head">
         <h2>{created.links.length > 1 ? `${created.links.length} new links` : 'New link'}</h2>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="created-tools">
           {created.links.length > 1 && (
-            <CopyButton text={all} className="btn btn-sm">
+            <CopyButton text={all} className="ds-btn ds-btn-sm ds-btn-secondary">
               Copy all
             </CopyButton>
           )}
-          <button className="btn btn-sm btn-icon btn-quiet" onClick={onDismiss} aria-label="Dismiss">
-            <X size={16} />
-          </button>
+          <IconButton label="Dismiss" tooltip="Dismiss" icon={<X weight="bold" aria-hidden />} onClick={onDismiss} />
         </div>
       </div>
-      <div className="created">
+      <div className="created-list">
         {created.links.map((l) => (
           <div className="created-row" key={l.token}>
             <code>{candidateUrl(l.token)}</code>
-            {l.label && <span className="muted">{l.label}</span>}
-            <CopyButton text={candidateUrl(l.token)} className="btn btn-sm">
+            {l.label && <span className="created-label">{l.label}</span>}
+            <CopyButton text={candidateUrl(l.token)} className="ds-btn ds-btn-sm ds-btn-secondary">
               Copy link
             </CopyButton>
           </div>
         ))}
       </div>
-    </section>
+    </Card>
   );
 }
 

@@ -94,7 +94,6 @@ a:hover {
 :focus-visible {
   outline: 2px solid var(--text-strong);
   outline-offset: 2px;
-  border-radius: 3px;
 }
 
 .sr-only {
@@ -220,8 +219,7 @@ a:hover {
 }
 .input:focus-visible,
 .select:focus-visible {
-  outline: 2px solid var(--color-true-blue);
-  outline-offset: 1px;
+  outline: none;
   border-color: var(--color-true-blue);
 }
 .input[aria-invalid='true'] {
@@ -300,24 +298,6 @@ a:hover {
   padding: 20px;
 }
 
-.created {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-light);
-  display: grid;
-  gap: 8px;
-}
-.created-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.created-row code {
-  flex: 1 1 240px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
 code,
 .mono {
   font-family: ui-monospace, monospace;
@@ -689,7 +669,7 @@ dialog.dlg::backdrop {
   height: 48px;
 }
 .filter-row {
-  padding: 0 33px; /* 32px + the 1px card border, so edges line up with the panel's grid */
+  padding: 0 33px 0 0; /* buttons start at the left edge of the cards; the right 33px (32 + card border) keeps Search aligned with the stepper and Create */
   margin-top: -8px; /* sits directly under the panel; the 32px page gap is too loose here */
 }
 .filter-buttons {
@@ -824,4 +804,53 @@ table.links {
   .search-form {
     grid-column: auto;
   }
+}
+
+/* "New link" card shown after creating links */
+.created-card {
+  padding: 24px 32px;
+  margin-top: 16px;
+}
+.created-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+.created-head h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+.created-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.created-list {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+.created-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.created-row code {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+  color: var(--text-body);
+}
+.created-label {
+  font-size: 15px;
+  color: var(--text-muted);
 }

@@ -13,6 +13,7 @@ import {
   formatDayLong,
   formatTime,
   slotInstantFor,
+  todayIn,
   type CalDate,
 } from '../lib/time';
 
@@ -279,12 +280,13 @@ export function WeekCalendar({
   }
 
   const live = mode !== 'view';
+  const todayKey = calKey(todayIn(tz));
   return (
     <div className={`ds-card rc${flat ? ' is-flat' : ''}`} role="group" aria-label={label}>
       <div className="rc-head">
         <div />
         {days.map((d) => (
-          <div key={calKey(d)} className="rc-day">
+          <div key={calKey(d)} className={`rc-day${calKey(d) === todayKey ? ' is-today' : ''}`} aria-current={calKey(d) === todayKey ? 'date' : undefined}>
             <b>{formatCalWeekday(d)}</b>
             <br />
             <span>{formatCalShort(d)}</span>
@@ -370,7 +372,7 @@ export function WeekCalendar({
                   <button
                     type="button"
                     className={`rc-slot ${picked ? 'rc-picked' : 'rc-suggested'}`}
-                    aria-label={`${picked ? `Selected by candidate, number ${rank}` : 'Suggested'}, ${formatDayLong(s.start, tz)}, ${when}. Press to remove.`}
+                    aria-label={`${picked ? `Selected by candidate, number ${rank}` : 'Suggested'}, ${formatDayLong(s.start, tz)}, ${when}.${picked ? '' : ' Press to remove.'}`}
                     onClick={(e) => {
                       // a mouse click is handled on pointer release; Enter / Space (detail 0) removes it
                       if (e.detail === 0 && onSuggestRange) onSuggestRange(s.start, s.start + SLOT_MS);
