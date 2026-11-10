@@ -13,6 +13,8 @@
   --color-cloud: #f4f6f9;
   --color-mist: #e4e9f0;
   --color-slate: #5a6b7b;
+  /* QuickSlot app icon background; also the login screen's side panel */
+  --color-icon-navy: #102232;
   /* semantic */
   --text-strong: #0f1f2c;
   --text-body: #2a3742;

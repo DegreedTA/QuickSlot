@@ -348,7 +348,7 @@ code {
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
 }
 .gate-side {
-  background: var(--color-moonshot);
+  background: var(--color-icon-navy);
   color: var(--text-on-dark);
   padding: 40px;
   display: flex;
