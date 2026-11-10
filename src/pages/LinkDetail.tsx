@@ -7,6 +7,7 @@ import { CopyButton } from '../components/CopyButton';
 import { ZoneCombobox } from '../components/ZoneCombobox';
 import { Badge, Button, Card, NavArrow, Select, StatusChip, TextInput } from '../components/ui';
 import { useDismiss } from '../components/ui/useDismiss';
+import { useFlashOnChange } from '../lib/useFlash';
 import { useManagerCall, useSession } from '../lib/session';
 import { api } from '../lib/api';
 import { ApiError, type ManagerLinkData, type SuggestedSlot } from '../lib/types';
@@ -208,28 +209,37 @@ function useSuggestions(data: ManagerLinkData, reload: () => Promise<void>) {
     return null;
   }
 
+  // Times the candidate picked are part of their availability: the recruiter cannot take them back.
+  const pickedStarts = useMemo(() => new Set(data.ranked_choices.map((s) => Date.parse(s))), [data.ranked_choices]);
+  const isPicked = (start: string) => pickedStarts.has(Date.parse(start));
+
   function remove(start: string, zone: string) {
+    if (isPicked(start)) {
+      setError('The candidate picked this time, so it stays.');
+      return;
+    }
     setError(null);
     commit(draftRef.current.filter((x) => x.start !== start), zone);
   }
 
+  /** Removes every suggestion nobody picked. Picked ones stay (and stay shown as selected). */
   function clearAll(zone: string) {
     setError(null);
-    commit([], zone);
+    commit(draftRef.current.filter((x) => isPicked(x.start)), zone);
   }
 
-  return { draft, visible, minutes, setMinutes, scope, setScope, status, error, setError, addRange, remove, clearAll };
+  return { draft, visible, minutes, setMinutes, scope, setScope, status, error, setError, addRange, remove, clearAll, isPicked };
 }
 
 const prettyHours = (h: number) => `${Number(h.toFixed(2))} h free`;
 
-/** "Updated today, 10:26 PM" / "Updated yesterday, ..." / "Updated Nov 5, 10:26 AM" */
-function updatedText(ts: number, tz: string) {
+/** "Updated today, 10:26 PM" / "Updated yesterday, ..." / "Updated Nov 5, 10:26 AM" (or "Created ..." before the candidate saved anything) */
+function updatedText(ts: number, tz: string, verb: 'Updated' | 'Created') {
   const days = calDiffDays(todayIn(tz, ts), todayIn(tz));
   const time = formatTime(ts, tz);
-  if (days === 0) return `Updated today, ${time}`;
-  if (days === 1) return `Updated yesterday, ${time}`;
-  return `Updated ${formatCalShort(todayIn(tz, ts))}, ${time}`;
+  if (days === 0) return `${verb} today, ${time}`;
+  if (days === 1) return `${verb} yesterday, ${time}`;
+  return `${verb} ${formatCalShort(todayIn(tz, ts))}, ${time}`;
 }
 
 function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Promise<void> }) {
@@ -256,6 +266,10 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
   const rankedMs = useMemo(() => data.ranked_choices.map((s) => Date.parse(s)), [data.ranked_choices]);
   const ranks = useMemo(() => new Map(rankedMs.map((t, i) => [t, i + 1])), [rankedMs]);
   const expired = data.status === 'expired';
+  // only the candidate's changes count as an update; before they save anything it shows when the link was created
+  const answered = data.slots.length + data.ranked_choices.length > 0;
+  const metaFlash = useFlashOnChange<HTMLDivElement>(zone);
+  const colsFlash = useFlashOnChange<HTMLDivElement>(zone);
   const candUrl = `${window.location.origin}/${data.token}`;
   const status = expired ? null : linkStatus(statusInputFromLink(data), zone);
 
@@ -328,9 +342,11 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
           ) : (
             <h1 className="page-title">{label || 'Untitled link'}</h1>
           )}
-          <div className="title-meta">
+          <div className="title-meta" ref={metaFlash}>
             {status && <StatusChip status={status} />}
-            <span className="title-updated">{updatedText(Date.parse(data.updated_at), zone)}</span>
+            <span className="title-updated">
+              {answered ? updatedText(Date.parse(data.candidate_updated_at ?? data.updated_at), zone, 'Updated') : updatedText(Date.parse(data.created_at), zone, 'Created')}
+            </span>
           </div>
           {data.batch.length > 1 && (
             <div className="batch-list" aria-label="Links in this batch">
@@ -360,7 +376,7 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
 
       {expired && <p className="notice">This link is inactive.</p>}
 
-      <div className="detail-cols">
+      <div className="detail-cols" ref={colsFlash}>
         <section className="cal-col" aria-label="Availability">
           <div className="zone-line">
             <label htmlFor="rz">Times shown in</label>
@@ -611,16 +627,17 @@ function SuggestedCard({
   const closeAdd = useCallback(() => setAdding(false), []);
   useDismiss(wrap, adding, closeAdd);
   const n = sug.visible.length;
+  const removable = n - pickedCount; // picked times stay, so "Clear all" only ever removes these
 
   return (
     <Card className="side-card" aria-labelledby="sug-h">
       <div className="card-head">
         <h2 id="sug-h">Suggested times</h2>
-        {n > 0 &&
+        {removable > 0 &&
           !expired &&
           (confirmClear ? (
             <div role="group" aria-label="Confirm clear all" className="confirm-inline">
-              <span>Remove all {n}?</span>
+              <span>Remove the {removable} not picked?</span>
               <Button
                 size="sm"
                 onClick={() => {
@@ -628,7 +645,7 @@ function SuggestedCard({
                   setConfirmClear(false);
                 }}
               >
-                Remove all
+                Remove
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setConfirmClear(false)}>
                 Cancel
@@ -671,7 +688,7 @@ function SuggestedCard({
                   {formatDayLong(t, zone)} · {rangeLabel(t, t + s.minutes * 60000, zone).replace('–', ' – ')}
                   {ranks.has(t) && <Badge>Picked #{ranks.get(t)}</Badge>}
                 </span>
-                {!expired && (
+                {!expired && !sug.isPicked(s.start) && (
                   <button type="button" className="ds-icon-btn" aria-label={`Remove ${formatDayLong(t, zone)} ${formatTime(t, zone)}`} onClick={() => sug.remove(s.start, zone)}>
                     <X weight="bold" aria-hidden />
                   </button>

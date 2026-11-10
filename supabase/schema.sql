@@ -235,7 +235,7 @@ begin
       select jsonb_agg(row_to_json(x) order by x.sort_at desc)
       from (
         select
-          l.token, l.label, l.batch_id, l.created_at, l.expires_at, l.updated_at,
+          l.token, l.label, l.batch_id, l.created_at, l.expires_at, l.updated_at, l.candidate_updated_at,
           (l.active and l.expires_at > now()) as is_active,
           cardinality(l.slots) as slot_count,
           (select min(t) from unnest(l.slots) t where t > now()) as next_slot,
@@ -333,6 +333,7 @@ begin
     'ranked_choices', to_jsonb(l.ranked_choices),
     'created_at', l.created_at,
     'updated_at', l.updated_at,
+    'candidate_updated_at', l.candidate_updated_at,
     'expires_at', l.expires_at
   );
 end;
@@ -372,15 +373,24 @@ begin
            where mod(extract(epoch from (s->>'start')::timestamptz)::bigint, 900) = 0
              and (s->>'start')::timestamptz > now()
            limit 60) d;
+  -- Times the candidate picked are part of their availability: they always stay, even when the
+  -- recruiter clears or replaces the suggestions (for one link or a whole batch).
   update public.links l
-     set suggested_slots = cleaned,
+     set suggested_slots = coalesce((
+           select jsonb_agg(u.x order by (u.x->>'start')::timestamptz)
+             from (
+               select distinct on ((m.x->>'start')::timestamptz) m.x
+                 from (
+                   select 0 as pri, x from jsonb_array_elements(l.suggested_slots) x
+                    where (x->>'start')::timestamptz = any (l.ranked_choices)
+                   union all
+                   select 1 as pri, x from jsonb_array_elements(cleaned) x
+                 ) m
+                order by (m.x->>'start')::timestamptz, m.pri
+             ) u
+         ), '[]'::jsonb),
          suggested_slots_timezone = p_timezone,
-         ranked_choices = coalesce((
-           select array_agg(c order by ord)
-             from unnest(l.ranked_choices) with ordinality as u(c, ord)
-            where c in (select (x->>'start')::timestamptz from jsonb_array_elements(cleaned) x)
-         ), '{}'),
-         updated_at = now()
+         updated_at = now() -- picks are untouched: every picked suggestion was kept above
    where l.token = any (select lower(trim(t)) from unnest(coalesce(p_tokens, '{}')) t);
   get diagnostics changed = row_count;
   return jsonb_build_object('ok', true, 'changed', changed);

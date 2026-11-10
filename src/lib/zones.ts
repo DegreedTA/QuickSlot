@@ -5,7 +5,7 @@
 // app keeps working from the browser's list: the API only adds names the browser might not know.
 // Offsets and daylight saving are always computed by the browser, never taken from the API.
 
-import { COMMON_ZONES, allZones, browserZone, cityOf, gmtLabel, isFriendlyZone, tzLabel, tzOffsetMinutes, zoneName } from './time';
+import { SUGGESTED_ZONES, allZones, cityOf, gmtLabel, isFriendlyZone, tzLabel, tzOffsetMinutes, zoneName } from './time';
 
 const CACHE_KEY = 'quickslot-zones-v1';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -129,15 +129,15 @@ const ALIASES: Record<string, string[]> = {
   'America/Lima': ['peru'],
   'America/Santiago': ['chile'],
   'America/Argentina/Buenos_Aires': ['argentina', 'art'],
-  'Europe/London': ['gmt', 'bst', 'uk', 'united kingdom', 'england', 'britain', 'scotland'],
+  'Europe/London': ['gmt', 'bst', 'uk', 'united kingdom', 'england', 'britain', 'scotland', 'london', 'europe', 'western europe'],
   'Europe/Dublin': ['ireland'],
   'Europe/Lisbon': ['portugal', 'wet'],
   'Europe/Berlin': ['cet', 'cest', 'germany', 'central europe', 'munich'],
-  'Europe/Paris': ['cet', 'cest', 'france', 'central europe'],
+  'Europe/Paris': ['cet', 'cest', 'france', 'central europe', 'europe'],
   'Europe/Madrid': ['cet', 'cest', 'spain', 'espana', 'barcelona'],
   'Europe/Amsterdam': ['cet', 'netherlands', 'holland'],
   'Europe/Rome': ['cet', 'italy', 'italia'],
-  'Europe/Athens': ['eet', 'eest', 'greece'],
+  'Europe/Athens': ['eet', 'eest', 'greece', 'eastern europe', 'europe'],
   'Europe/Istanbul': ['turkey', 'turkiye'],
   'Europe/Moscow': ['msk', 'russia'],
   'Africa/Lagos': ['wat', 'nigeria'],
@@ -213,16 +213,14 @@ function parseOffset(q: string): number | null {
   return m[1] === '-' ? -mins : mins;
 }
 
-/** The first things shown before anyone types: this device's zone, then the most used zones. */
-export function suggestedZones(limit = 8): ZoneOption[] {
-  const br = browserZone();
-  const list = [br, ...COMMON_ZONES.map(([z]) => z).filter((z) => z !== br)].slice(0, limit);
-  return list.map((tz) => ({ tz, label: tzLabel(tz) }));
+/** The first things shown before anyone types: the common time zones, in a fixed order. */
+export function suggestedZones(limit = SUGGESTED_ZONES.length): ZoneOption[] {
+  return SUGGESTED_ZONES.slice(0, limit).map((tz) => ({ tz, label: tzLabel(tz) }));
 }
 
 export function searchZones(query: string, limit = 8): ZoneOption[] {
   const q = norm(query);
-  if (!q) return suggestedZones(limit);
+  if (!q) return suggestedZones(); // the fixed list, in its fixed order
   const off = parseOffset(query);
   const now = Date.now();
   const scored: { e: Entry; score: number }[] = [];

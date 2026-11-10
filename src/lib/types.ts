@@ -25,6 +25,8 @@ export interface LinkRow {
   created_at: string;
   expires_at: string;
   updated_at: string;
+  /** Last change made by the candidate. Recruiter edits do not move it. */
+  candidate_updated_at: string;
   is_active: boolean;
   slot_count: number;
   next_slot: string | null;
@@ -55,6 +57,7 @@ export interface ManagerLinkData extends Omit<CandidateLinkData, 'status'> {
   batch_id: string | null;
   batch: BatchMate[];
   created_at: string;
+  candidate_updated_at: string;
 }
 
 export type ManagerLinkResult = ManagerLinkData | { status: 'not_found' };

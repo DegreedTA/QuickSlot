@@ -264,6 +264,7 @@ export function createDemoApi(): Api {
           created_at: r.created_at,
           expires_at: r.expires_at,
           updated_at: r.updated_at,
+          candidate_updated_at: r.candidate_updated_at ?? r.updated_at,
           is_active: live(r),
           slot_count: r.slots.length,
           next_slot: r.slots.map((x) => Date.parse(x)).filter((t) => t > Date.now()).sort((a, b) => a - b).map((t) => new Date(t).toISOString())[0] ?? null,
@@ -343,6 +344,7 @@ export function createDemoApi(): Api {
         ranked_choices: r.ranked_choices,
         created_at: r.created_at,
         updated_at: r.updated_at,
+        candidate_updated_at: r.candidate_updated_at ?? r.updated_at,
         expires_at: r.expires_at,
       };
       return delay(data);
@@ -366,11 +368,14 @@ export function createDemoApi(): Api {
       let n = 0;
       for (const r of s.rows) {
         if (!tokens.includes(r.token)) continue;
-        r.suggested_slots = cleaned;
+        // same as schema.sql: times the candidate picked always stay (they are part of their availability)
+        const picked = new Set(r.ranked_choices.map((c) => Date.parse(c)));
+        const kept = r.suggested_slots.filter((x) => picked.has(Date.parse(x.start)));
+        const byStart = new Map(cleaned.map((x) => [Date.parse(x.start), x]));
+        kept.forEach((x) => byStart.set(Date.parse(x.start), x));
+        r.suggested_slots = [...byStart.values()].sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
         r.suggested_slots_timezone = timezone;
-        const keep = new Set(cleaned.map((x) => Date.parse(x.start)));
-        r.ranked_choices = r.ranked_choices.filter((c) => keep.has(Date.parse(c)));
-        r.updated_at = new Date().toISOString();
+        r.updated_at = new Date().toISOString(); // recruiter edit: candidate_updated_at is left alone
         n++;
       }
       save(s);

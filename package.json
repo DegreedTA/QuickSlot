@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/time.test.mjs && node tests/sql.test.mjs"
+    "test": "node tests/time.test.mjs && node tests/weekly.test.mjs && node tests/sql.test.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

@@ -167,7 +167,6 @@
   background: #fff;
   border: 1.5px solid #0062e3;
   border-radius: 16px;
-  box-shadow: 0 0 0 3px rgba(0, 98, 227, 0.18);
   outline: none;
 }
 
@@ -184,6 +183,12 @@
   display: flex;
   flex-direction: column;
   gap: 32px;
+}
+.cal-col .week-nav + .legend-row {
+  margin-top: 12px; /* room between the week tabs and the key */
+}
+.cal-col .legend-row + .rc {
+  margin-top: 12px; /* and between the key and the calendar */
 }
 .side-col {
   flex: 1 1 380px;
@@ -217,9 +222,10 @@
   font-size: 14px;
   color: #0f1f2c;
 }
-.ds-zone .combo-input:focus {
+.ds-zone .combo-input:focus,
+.ds-zone .combo-input:focus-visible {
   border-color: #0062e3;
-  box-shadow: 0 0 0 3px rgba(0, 98, 227, 0.18);
+  outline: none;
 }
 
 /* week navigation */

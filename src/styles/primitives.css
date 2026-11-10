@@ -97,6 +97,10 @@
   position: relative;
   display: inline-flex;
 }
+.ds-tip-start .ds-tip {
+  left: 0;
+  transform: none;
+}
 .ds-tip {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -139,9 +143,10 @@
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.ds-input:focus {
+.ds-input:focus,
+.ds-input:focus-visible {
   border-color: #0062e3;
-  box-shadow: 0 0 0 3px rgba(0, 98, 227, 0.18);
+  outline: none;
 }
 
 /* Select (pill) */
@@ -166,8 +171,8 @@
   outline: none;
 }
 .ds-select:focus-visible {
-  outline: 3px solid #0026ee;
-  outline-offset: 2px;
+  border-color: #0062e3;
+  outline: none;
 }
 .ds-select-wrap svg {
   position: absolute;
@@ -192,21 +197,20 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* StatusChip: all chips share one fixed width (raise --ds-chip-w if a label ever wraps) */
+/* StatusChip: as wide as its words, text left aligned */
 .ds-chip {
-  --ds-chip-w: 212px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   box-sizing: border-box;
-  width: var(--ds-chip-w);
-  height: 28px;
+  height: 26px;
   padding: 0 12px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
+  text-align: left;
   border: 1px solid transparent;
 }
 .ds-chip-new {

@@ -1,6 +1,6 @@
 import {
   useEffect, useId, useRef, useState,
-  type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type HTMLAttributes,
+  type ButtonHTMLAttributes, type ComponentPropsWithRef, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes,
 } from 'react';
 import { CaretDown, Check, Copy, Minus, Plus } from '@phosphor-icons/react';
 import { copyText } from '../../lib/clipboard';
@@ -17,7 +17,7 @@ export function Button({
 }
 
 /* Tooltip: hover or keyboard focus, after 300ms, above and centered */
-export function Tooltip({ label, children, className, style }: { label: string; children: ReactNode; className?: string; style?: CSSProperties }) {
+export function Tooltip({ label, children, className, style, align = 'center' }: { label: string; children: ReactNode; className?: string; style?: CSSProperties; align?: 'center' | 'start' }) {
   const [open, setOpen] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   const id = useId();
@@ -32,7 +32,7 @@ export function Tooltip({ label, children, className, style }: { label: string; 
   };
   return (
     <span
-      className={cx('ds-tip-wrap', className)}
+      className={cx('ds-tip-wrap', align === 'start' && 'ds-tip-start', className)}
       style={style}
       onMouseEnter={show}
       onMouseLeave={hide}
@@ -53,10 +53,10 @@ export function Tooltip({ label, children, className, style }: { label: string; 
 
 /* IconButton: aria-label required; tooltip shows the label */
 export function IconButton({
-  label, tooltip, icon, className, type = 'button', ...rest
-}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'children'> & { label: string; tooltip?: string; icon: ReactNode }) {
+  label, tooltip, icon, className, type = 'button', tipAlign, ...rest
+}: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'children'> & { label: string; tooltip?: string; icon: ReactNode; tipAlign?: 'center' | 'start' }) {
   return (
-    <Tooltip label={tooltip ?? label}>
+    <Tooltip label={tooltip ?? label} align={tipAlign}>
       <button type={type} aria-label={label} className={cx('ds-icon-btn', className)} {...rest}>
         {icon}
       </button>
@@ -65,7 +65,7 @@ export function IconButton({
 }
 
 /* CopyIconButton: IconButton whose tooltip reads "Copied" for 1.5s after click */
-export function CopyIconButton({ text, label = 'Copy link' }: { text: string | (() => string); label?: string }) {
+export function CopyIconButton({ text, label = 'Copy link', tipAlign }: { text: string | (() => string); label?: string; tipAlign?: 'center' | 'start' }) {
   const [done, setDone] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -81,6 +81,7 @@ export function CopyIconButton({ text, label = 'Copy link' }: { text: string | (
       <IconButton
         label={label}
         tooltip={done ? 'Copied' : label}
+        tipAlign={tipAlign}
         onClick={onClick}
         icon={done ? <Check weight="bold" aria-hidden /> : <Copy weight="bold" aria-hidden />}
       />
@@ -112,7 +113,7 @@ export function Select({ size = 'md', className, children, ...rest }: Omit<Selec
 }
 
 /* Card */
-export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
+export function Card({ className, ...rest }: ComponentPropsWithRef<'div'>) {
   return <div className={cx('ds-card', className)} {...rest} />;
 }
 

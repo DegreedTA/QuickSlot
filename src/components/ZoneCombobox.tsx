@@ -18,6 +18,7 @@ interface Props {
 export function ZoneCombobox({ id, value, onChange, placeholder = 'City or time zone' }: Props) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const justChose = useRef(false); // the blur that follows a choice must not choose again
   const [query, setQuery] = useState<string | null>(null); // null = showing the chosen zone
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -62,6 +63,10 @@ export function ZoneCombobox({ id, value, onChange, placeholder = 'City or time 
     setQuery(null);
     setOpen(false);
     if (tz !== value) onChange(tz);
+    // done choosing: leave the box, so clicking it again opens the list again
+    justChose.current = true;
+    inputRef.current?.blur();
+    justChose.current = false;
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -84,6 +89,7 @@ export function ZoneCombobox({ id, value, onChange, placeholder = 'City or time 
   }
 
   function onBlur() {
+    if (justChose.current) return;
     // typed something and moved on: take the best match rather than throwing the text away
     if (query && query.trim() && options[0]) choose(options[0].tz);
     else {
@@ -118,6 +124,7 @@ export function ZoneCombobox({ id, value, onChange, placeholder = 'City or time 
           setOpen(true);
           setActive(0);
         }}
+        onClick={() => setOpen(true)}
         onKeyDown={onKeyDown}
         onBlur={onBlur}
       />

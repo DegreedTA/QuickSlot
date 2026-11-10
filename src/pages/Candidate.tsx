@@ -28,6 +28,8 @@ import {
 import { WeekCalendar, type Suggestion } from '../components/WeekCalendar';
 import { ZoneCombobox } from '../components/ZoneCombobox';
 import { Button, Card, NavArrow } from '../components/ui';
+import { useFlashOnChange } from '../lib/useFlash';
+import { checkWeeks } from '../lib/weeklyMinimum';
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'expired' } | { kind: 'notfound' } | { kind: 'ok'; data: CandidateLinkData };
 
@@ -117,6 +119,7 @@ const weekLabel = (mon: CalDate) => {
   return `${formatCalShort(mon)} – ${mon.m === fri.m ? fri.d : formatCalShort(fri)}`;
 };
 const hoursText = (slotCount: number) => `${Number((slotCount / 4).toFixed(2))} h free`;
+const fmtH = (minutes: number) => `${Number((minutes / 60).toFixed(2))} h`;
 
 function CandidateView({ token, data }: { token: string; data: CandidateLinkData }) {
   // Returning visit: the link already has saved data. This is a heuristic, not a stored fact: a candidate
@@ -132,6 +135,7 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   const [save, setSave] = useState<Save>(() => (returning || data.ranked_choices.length ? { kind: 'saved', at: Date.parse(data.updated_at) } : { kind: 'idle' }));
   const [paint, setPaint] = useState(false);
   const [done, setDone] = useState(false);
+  const [triedDone, setTriedDone] = useState(false);
 
   const latest = useRef({ slots, tz, ranked });
   latest.current = { slots, tz, ranked };
@@ -283,9 +287,35 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   // the calendar shows only what the candidate picked, with its number
   const pickedOnGrid = useMemo(() => suggestions.filter((s) => ranks.has(s.start)), [suggestions, ranks]);
   const expiresLabel = formatCalFull(todayIn(tz, Date.parse(data.expires_at)));
+  // weekly minimums (free blocks + picked times count)
+  const check = useMemo(
+    () => checkWeeks(tz, slots, pickedOnGrid, LEAD_MS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tz, slots, pickedOnGrid, tick],
+  );
+  const weekIndex = (mon: CalDate) => weeks.findIndex((w) => calKey(w) === calKey(mon));
+  const unmetText = check.unmet
+    .map((w) => {
+      const x = w === 'current' ? check.current! : check.next;
+      return `${fmtH(x.need)} ${w === 'current' ? 'this week' : 'next week'}`;
+    })
+    .join(' and ');
+  const unmetDetail = check.unmet
+    .map((w) => {
+      const x = w === 'current' ? check.current! : check.next;
+      return `${fmtH(x.need)} ${w === 'current' ? 'this week' : 'next week'} (${fmtH(x.have)} so far)`;
+    })
+    .join(' and ');
+  const picksFlash = useFlashOnChange<HTMLDivElement>(tz);
+  const calFlash = useFlashOnChange<HTMLDivElement>(tz);
   const stepBadge = (n: number) => !returning && <span className="step-badge" aria-hidden="true">{n}</span>;
 
   function finish() {
+    if (check.unmet.length > 0) {
+      setTriedDone(true); // keep the page as it is and say what is missing
+      return;
+    }
+    setTriedDone(false);
     flushAll();
     setDone(true);
   }
@@ -323,7 +353,7 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
         </Card>
 
         {suggestions.length > 0 && (
-          <Card className={`cand-card cand-pad${locked ? ' is-locked' : ''}`} aria-labelledby="picks-h">
+          <Card ref={picksFlash} className={`cand-card cand-pad${locked ? ' is-locked' : ''}`} aria-labelledby="picks-h">
             <div className="cand-head-row">
               <div className="cand-title">
                 {stepBadge(2)}
@@ -338,7 +368,7 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
             {pickWeeks.map((w) => (
               <div className="pick-grid" key={calKey(w.mon)}>
                 {w.days.map((d) => (
-                  <div className="pick-day" key={calKey(d.day)} role="group" aria-label={d.label}>
+                  <div className={`pick-day${calKey(d.day) === calKey(today) ? ' is-today' : ''}`} key={calKey(d.day)} role="group" aria-label={d.label}>
                     <h3>{d.label}</h3>
                     <div className="pick-col">
                       {d.items.map((s) => {
@@ -366,14 +396,35 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
           </Card>
         )}
 
-        <Card className={`cand-card cand-pad cand-cal${locked ? ' is-locked' : ''}`} aria-labelledby="cal-h">
+        <Card ref={calFlash} className={`cand-card cand-pad cand-cal${locked ? ' is-locked' : ''}`} aria-labelledby="cal-h">
           <div className="cand-title">
-            {stepBadge(3)}
+            {stepBadge(suggestions.length > 0 ? 3 : 2)}
             <div>
               <h2 id="cal-h">Mark any other times you're free</h2>
               <p className="cand-sub">Click or drag on the calendar</p>
             </div>
           </div>
+
+          {check.unmet.length > 0 && (
+            <div className="week-notice is-need" role="status">
+              <span>
+                <strong>Please mark at least {unmetDetail}.</strong>
+              </span>
+              <Button size="sm" variant="secondary" onClick={() => setWeekIdx(Math.max(0, weekIndex((check.unmet[0] === 'current' ? check.current! : check.next).mon)))}>
+                Show {check.unmet[0] === 'current' ? 'this' : 'next'} week
+              </Button>
+            </div>
+          )}
+          {check.appeal && (
+            <div className="week-notice is-appeal" role="status">
+              <span>
+                <strong>Consider marking more times next week.</strong> More options help us find a time that works for you.
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => setWeekIdx(Math.max(0, weekIndex(check.next.mon)))}>
+                Show next week
+              </Button>
+            </div>
+          )}
 
           <div className="cand-toolbar">
             <div className="cand-weeknav">
@@ -424,6 +475,7 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
           expires={expiresLabel}
           picks={suggestions.length > 0 ? pickedOnGrid.length : null}
           slotCount={slots.size}
+          blocked={triedDone && check.unmet.length > 0 ? `Please mark at least ${unmetText} to finish.` : null}
           onRetry={flushAll}
           onDone={finish}
           onKeepEditing={() => setDone(false)}
@@ -445,6 +497,7 @@ function SaveBar({
   expires,
   picks,
   slotCount,
+  blocked,
   onRetry,
   onDone,
   onKeepEditing,
@@ -455,6 +508,7 @@ function SaveBar({
   expires: string;
   picks: number | null;
   slotCount: number;
+  blocked: string | null;
   onRetry: () => void;
   onDone: () => void;
   onKeepEditing: () => void;
@@ -496,6 +550,11 @@ function SaveBar({
           )}
         </span>
       </div>
+      {blocked && (
+        <p className="save-block" role="alert">
+          {blocked}
+        </p>
+      )}
       <Button size="lg" onClick={onDone}>
         I'm done <span aria-hidden="true">→</span>
       </Button>

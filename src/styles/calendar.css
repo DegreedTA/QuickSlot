@@ -72,6 +72,13 @@
   font-weight: 400;
   color: #5a6b7b;
 }
+.rc-day.is-today b,
+.rc-day.is-today span {
+  color: #0062e3;
+}
+.rc-day.is-today span {
+  font-weight: 600;
+}
 .rc-body {
   padding-bottom: 12px;
   user-select: none;
