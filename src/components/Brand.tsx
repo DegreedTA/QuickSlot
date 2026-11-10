@@ -1,13 +1,13 @@
-/** The QuickSlot app icon (same drawing as public/favicon.svg): a calendar with a gold marked day, on True Blue. */
+/** The QuickSlot app icon (same drawing as public/favicon.svg): a white calendar with a coral marked day, on navy. */
 export function BrandMark({ size = 26 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="6" fill="#0062E3" />
-      <rect x="6" y="9" width="20" height="18" rx="3" fill="none" stroke="#FFFFFF" strokeWidth="2" />
-      <line x1="6" y1="15" x2="26" y2="15" stroke="#FFFFFF" strokeWidth="2" />
-      <rect x="10" y="6" width="3" height="5" rx="1" fill="#FFFFFF" />
-      <rect x="19" y="6" width="3" height="5" rx="1" fill="#FFFFFF" />
-      <circle cx="12" cy="21" r="2" fill="#FED141" />
+      <rect width="32" height="32" rx="5" fill="#102232" />
+      <rect x="6" y="8.75" width="20" height="18.2" rx="2.6" fill="none" stroke="#FFFFFF" strokeWidth="2.25" />
+      <line x1="6" y1="15" x2="26" y2="15" stroke="#FFFFFF" strokeWidth="2.25" />
+      <rect x="10" y="5.5" width="2.75" height="5.7" rx="1.2" fill="#FFFFFF" />
+      <rect x="19.25" y="5.5" width="2.75" height="5.7" rx="1.2" fill="#FFFFFF" />
+      <circle cx="11.85" cy="21.1" r="2.1" fill="#FF836B" />
     </svg>
   );
 }
