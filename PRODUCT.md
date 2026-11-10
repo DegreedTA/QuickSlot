@@ -56,7 +56,7 @@ Undecided:
 
 - Name: QuickSlot (the name of the original app). Subject to change if the user says so.
 - Candidate-facing copy keeps the original promises: "You are not booking an interview, you are only sharing your availability." and "This link expires automatically after 90 days."
-- Degreed-internal tool: no Degreed branding was supplied for this app.
+- Degreed-internal tool: it uses the Degreed design system (see `DESIGN.md`), without the logo image (the top bar is text).
 
 ## Evidence on Hand
 
