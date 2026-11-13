@@ -49,7 +49,9 @@ eq('Sat 4h next week -> ok', check(14, block(16, 9, 4)).unmet, []);
 // Fri-Sun: only the minimum next week -> plain "Consider marking more times" (they are already on that week)
 eq('Fri exactly 4h next week -> more appeal', check(13, block(17, 9, 4)).appeal, 'more');
 eq('Sat exactly 4h next week -> more appeal', check(14, block(16, 9, 4)).appeal, 'more');
-eq('Sun 5h next week -> no appeal (min + 1h reached)', check(15, block(16, 9, 5)).appeal, null);
+eq('Sun 5h next week -> more appeal', check(15, block(16, 9, 5)).appeal, 'more');
+eq('Sun 5.5h next week -> more appeal', check(15, [...block(16, 9, 5), at(16, 15), at(16, 15, 15)]).appeal, 'more');
+eq('Sun 6h next week -> no appeal', check(15, block(16, 9, 6)).appeal, null);
 eq('Fri 6h next week -> no appeal', check(13, block(17, 9, 6)).appeal, null);
 eq('Fri 3h next week -> need, not appeal', check(13, block(17, 9, 3)).appeal, null);
 // a requirement is never higher than the time that can still be marked
@@ -70,8 +72,8 @@ eq('answered, 0 valid -> none', st({ slot_count: 8, upcoming_slots: iso(block(17
 eq('Fri: only Friday times -> none next week', st({ slot_count: 16, upcoming_slots: iso(block(13, 18, 4)) }, 13), 'No valid times next week');
 eq('Fri: 4h next week -> few next week', st({ slot_count: 16, upcoming_slots: iso(block(17, 9, 4)) }, 13), 'Few valid times next week');
 eq('Fri: 5h next week -> few next week', st({ slot_count: 20, upcoming_slots: iso(block(17, 9, 5)) }, 13), 'Few valid times next week');
-eq('Fri: 5.25h next week -> up to date', st({ slot_count: 21, upcoming_slots: iso(block(17, 9, 5).concat([at(17, 14)])) }, 13), 'Up to date');
-eq('Fri: 6h next week -> up to date', st({ slot_count: 24, upcoming_slots: iso(block(17, 9, 6)) }, 13), 'Up to date');
+eq('Fri: 5.5h next week -> few next week', st({ slot_count: 22, upcoming_slots: iso(block(17, 9, 5).concat([at(17, 14), at(17, 14, 15)])) }, 13), 'Few valid times next week');
+eq('Fri: exactly 6h next week -> up to date', st({ slot_count: 24, upcoming_slots: iso(block(17, 9, 6)) }, 13), 'Up to date');
 eq('Sat: 5h next week -> few next week', st({ slot_count: 20, upcoming_slots: iso(block(16, 9, 5)) }, 14), 'Few valid times next week');
 eq('Sun: 6h next week -> up to date', st({ slot_count: 24, upcoming_slots: iso(block(16, 9, 6)) }, 15), 'Up to date');
 // Thursday: this week; 2h is still few, 3h or more is up to date

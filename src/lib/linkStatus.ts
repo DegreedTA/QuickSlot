@@ -1,7 +1,7 @@
 import type { LinkRow, ManagerLinkData, SuggestedSlot } from './types';
 import type { Status } from '../components/ui';
 import { coveredMinutes, weekBounds, weekRequirements } from './weeklyMinimum.ts';
-import { MIN_MINUTES_THU, NEAR_MINIMUM_EXTRA_MINUTES } from './statusConfig.ts';
+import { COMFORTABLE_MINUTES_NEXT_WEEK, MIN_MINUTES_THU, NEAR_MINIMUM_EXTRA_MINUTES } from './statusConfig.ts';
 
 /** What the status rules need. A dashboard LinkRow already has all of it. */
 export type StatusInput = Pick<LinkRow, 'has_unseen_change' | 'slot_count' | 'ranked_count' | 'suggested_count' | 'upcoming_slots' | 'upcoming_picks'>;
@@ -25,7 +25,7 @@ export function statusInputFromLink(d: ManagerLinkData): StatusInput {
  * from Friday on (same week as the candidate page).
  *  - Mon-Wed: fewer than the 4 h minimum.
  *  - Thu: fewer than 3 h (the 2 h minimum, or a little more, is still "few").
- *  - Fri-Sun: 5 h or less next week (the 4 h minimum plus up to an hour more); more than 5 h is up to date.
+ *  - Fri-Sun: 5.5 h or less next week; 6 h or more is up to date.
  */
 export function statusTarget(tz: string, now = Date.now()): { from: number; to: number; nextWeek: boolean; isFew: (minutes: number) => boolean } {
   const req = weekRequirements(tz, now);
@@ -33,7 +33,7 @@ export function statusTarget(tz: string, now = Date.now()): { from: number; to: 
   const [from, to] = weekBounds(w.mon, tz);
   const nextWeek = req.current === null;
   const isFew = nextWeek
-    ? (m: number) => m <= w.min + NEAR_MINIMUM_EXTRA_MINUTES
+    ? (m: number) => m < COMFORTABLE_MINUTES_NEXT_WEEK
     : w.min === MIN_MINUTES_THU
       ? (m: number) => m < w.min + NEAR_MINIMUM_EXTRA_MINUTES
       : (m: number) => m < w.min;
