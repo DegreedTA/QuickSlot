@@ -3,8 +3,10 @@ import { api } from './api';
 import { ApiError } from './types';
 import { browserZone } from './time';
 
-// The recruiter passcode lives in sessionStorage only: it is gone when the tab closes.
+// The recruiter passcode is remembered in this browser for 30 days (or until "Sign out"),
+// so recruiters are not asked for it every time. It is re-checked by the database on every call.
 const PASS_KEY = 'quickslot-recruiter-passcode';
+const PASS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const ZONE_KEY = 'quickslot-recruiter-zone';
 
 function read(storage: Storage | undefined, key: string): string | null {
@@ -23,6 +25,19 @@ function write(storage: Storage | undefined, key: string, value: string | null) 
   }
 }
 
+function readPasscode(): string | null {
+  const raw = read(globalThis.localStorage, PASS_KEY);
+  if (!raw) return null;
+  try {
+    const { p, exp } = JSON.parse(raw) as { p?: unknown; exp?: unknown };
+    if (typeof p === 'string' && typeof exp === 'number' && exp > Date.now()) return p;
+  } catch {
+    /* old or corrupt value: treat as signed out */
+  }
+  write(globalThis.localStorage, PASS_KEY, null);
+  return null;
+}
+
 interface Session {
   passcode: string | null;
   zone: string;
@@ -34,17 +49,17 @@ interface Session {
 const Ctx = createContext<Session | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [passcode, setPasscode] = useState<string | null>(() => read(globalThis.sessionStorage, PASS_KEY));
+  const [passcode, setPasscode] = useState<string | null>(readPasscode);
   const [zone, setZoneState] = useState<string>(() => read(globalThis.localStorage, ZONE_KEY) ?? browserZone());
 
   const signIn = useCallback(async (p: string) => {
     await api.managerCheck(p); // throws ApiError on a wrong passcode
-    write(globalThis.sessionStorage, PASS_KEY, p);
+    write(globalThis.localStorage, PASS_KEY, JSON.stringify({ p, exp: Date.now() + PASS_TTL_MS }));
     setPasscode(p);
   }, []);
 
   const signOut = useCallback(() => {
-    write(globalThis.sessionStorage, PASS_KEY, null);
+    write(globalThis.localStorage, PASS_KEY, null);
     setPasscode(null);
   }, []);
 

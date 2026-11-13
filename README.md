@@ -90,7 +90,7 @@ The Vercel and Supabase accounts are owned by the Talent Acquisition team accoun
 - Candidates need the secret 16-character code. Codes are random and not guessable.
 - Recruiter functions need the passcode on every call. After 20 wrong attempts in 10 minutes, all recruiter sign-ins are locked for 10 minutes (this is shared, so a stranger guessing can lock your team out briefly).
 - Candidates never receive the private label.
-- The passcode is kept in the browser tab only and disappears when the tab closes.
+- After signing in, the browser remembers the passcode for 30 days, so recruiters are not asked every time. "Sign out" forgets it right away, and it is also dropped if the passcode is changed. Because it is stored in the browser, only sign in on your own computer.
 
 Things to know:
 
