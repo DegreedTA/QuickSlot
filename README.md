@@ -19,35 +19,51 @@ npm run dev
 
 Open the address it prints. With no database configured it runs in **demo mode**: the passcode is `demo-passcode` and everything is stored in your own browser only. Nothing is shared with anyone.
 
-## Put it live
+## Where it runs
 
-This takes about 20 minutes. Steps 1 to 3 need whoever owns Degreed's cloud accounts, so ask IT to own the Supabase project (so this does not depend on one person's account again).
+QuickSlot is live and has three parts:
 
-### 1. Create the database (Supabase)
+| Part | Where | Address |
+| --- | --- | --- |
+| Website (static files) | Vercel | https://quickslot.degreedlabs.com (also https://quickslot-degreed.vercel.app) |
+| Code | GitHub | https://github.com/DegreedTA/QuickSlot |
+| Database | Supabase | Project URL and anon key are in Vercel's environment variables |
 
-1. Create a free project at [supabase.com](https://supabase.com), under a Degreed-owned account.
-2. Open **SQL Editor**, paste the entire contents of `supabase/schema.sql`, and run it.
-3. In the same editor, set the recruiter passcode (at least 10 characters, share it only with your team):
+It replaces the original app at `schedule.degreedlabs.com`, which stopped working when its Lovable account was disabled. Old links (`/<12 characters>`) do not work, because the old data lived in the old backend. Create fresh links in the new tool.
+
+### Deploying changes
+
+Vercel builds from this repository (build command `npm run build`, output folder `dist`). Pushing to the production branch deploys it automatically; other branches get preview deployments. Redirect rules for single-page routing are already included (`vercel.json`, `public/_redirects`).
+
+The site needs two environment variables in Vercel (Settings > Environment Variables, for Production):
+
+- `VITE_SUPABASE_URL`: the Supabase **Project URL**.
+- `VITE_SUPABASE_ANON_KEY`: the Supabase **anon public** key. It is meant to be public. It cannot read the tables; it can only call the functions in `schema.sql`.
+
+If either is missing, the site silently falls back to demo mode (data stored in each visitor's own browser, nothing shared), so check them first if recruiters report that links disappear.
+
+Vercel's **Deployment Protection** (Settings > Deployment Protection) must not require a Vercel login for Production, otherwise candidates cannot open their links.
+
+### Custom domain
+
+`quickslot.degreedlabs.com` is added in Vercel under Settings > Domains. The DNS records Vercel shows (a CNAME, and a TXT record to verify) are added by whoever manages the `degreedlabs.com` zone (IT).
+
+### Database (Supabase)
+
+Only needed when setting up a new database or changing the schema:
+
+1. Open **SQL Editor**, paste the entire contents of `supabase/schema.sql`, and run it. It is safe to re-run.
+2. Set the recruiter passcode (at least 10 characters, share it only with your team). Run the same line again any time you want to change it:
 
    ```sql
    select public.set_manager_passcode('choose-a-long-team-passcode');
    ```
 
-   Run that same line again any time you want to change the passcode.
-4. Open **Project Settings > API** and copy two values: the **Project URL** and the **anon public** key. The anon key is meant to be public. It cannot read the tables; it can only call the functions in `schema.sql`.
+3. Copy the **Project URL** and **anon public** key from **Project Settings > API** into the Vercel variables above, then redeploy.
 
-### 2. Publish the website
+The Supabase project should be owned by a Degreed account (not one person's), so the tool does not depend on one person leaving again.
 
-The site is static files. Any of these work:
-
-- **Vercel or Netlify (easiest):** connect the repository, set the build command to `npm run build` and the output folder to `dist`. Add two environment variables: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` with the values from step 1. Redirect rules for single-page routing are already included (`vercel.json`, `public/_redirects`).
-- **Degreed's own hosting:** run `npm run build` with those two variables set, then upload the `dist` folder. Make sure every unknown path serves `index.html`.
-
-### 3. Point the address at it
-
-Ask IT to point `schedule.degreedlabs.com` at the new site. The old links (`/<12 characters>`) will not work, because the old data lives in the old backend. Create fresh links in the new tool.
-
-### 4. Check it works
+### Check it works
 
 1. Open the site, sign in with your passcode, create a link labelled `Test`.
 2. Open that link in a private window, mark some times. You should see "Saved".

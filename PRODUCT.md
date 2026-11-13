@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-Confirmed with the user: React + TypeScript front end built as a static site, with Supabase (Postgres) as the backend, reached only through database functions. No application server. Hosting target for the static site is undecided (Vercel, Netlify, or Degreed's own hosting, pending IT).
+Confirmed with the user: React + TypeScript front end built as a static site, with Supabase (Postgres) as the backend, reached only through database functions. No application server. The static site is hosted on Vercel, the code lives on GitHub (DegreedTA/QuickSlot), and the production address is https://quickslot.degreedlabs.com.
 
 ## Users
 
@@ -19,7 +19,7 @@ Confirmed with the user: React + TypeScript front end built as a static site, wi
 
 QuickSlot lets a recruiter collect a candidate's interview availability through one private link, then see it in the recruiter's own time zone. The candidate shares free windows across the next 30 days, can come back to the same link and change them, and is told plainly that they are not booking anything. Recruiters can also suggest specific times (from an interviewer's availability) for the candidate to rank. Success: a recruiter can send a link in under a minute and later read the candidate's availability without a back-and-forth email thread.
 
-This is a rebuild. The original app was made by a former Degreed employee in Lovable, tied to an account that is now disabled, so the original code is not available. Only its behavior, observed from the public site, is being reproduced.
+This is a rebuild. The original app (schedule.degreedlabs.com) was made by a former Degreed employee in Lovable, tied to an account that is now disabled, so the original code is not available. Only its behavior, observed from the public site, was reproduced. The new app replaces it on its own address, quickslot.degreedlabs.com.
 
 ## Positioning
 
@@ -49,7 +49,7 @@ Constraints:
 - Backend access only through Postgres functions; tables are closed to direct access.
 
 Undecided:
-- Production hosting and who owns the Supabase project at Degreed.
+- Who owns the Supabase project at Degreed (it should be a company account, not one person's).
 - Whether to add Degreed single sign-on later.
 
 ## Brand Commitments
@@ -60,7 +60,7 @@ Undecided:
 
 ## Evidence on Hand
 
-- The live original at https://schedule.degreedlabs.com (manager) and an example candidate link, read for behavior only. Its code and data are not available.
+- The original app (formerly https://schedule.degreedlabs.com, manager side) and an example candidate link, read for behavior only. It no longer works; its code and data are not available.
 - No logo, brand kit, or user research supplied. Do not invent customers, usage numbers, or testimonials.
 
 ## Product Principles
