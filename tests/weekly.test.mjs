@@ -22,30 +22,32 @@ eq('overlap counted once', W.coveredMinutes(block(10, 9, 1), [{ start: at(10, 9,
 eq('past blocks ignored', W.coveredMinutes(block(10, 9, 2), [], at(10, 0), at(11, 0), at(10, 10)), 45);
 
 const check = (day, slots, picks = []) => W.checkWeeks(TZ, slots, picks, LEAD, at(day, 9));
+// `unmet` holds the weeks themselves; these tests only care which week each one is
+const un = (c) => c.unmet.map((w) => w.when);
 // Monday: 3h is not enough, 4h is
-eq('Mon 3h -> current unmet', check(9, block(10, 9, 3)).unmet, ['current']);
-eq('Mon 4h -> nothing unmet', check(9, block(10, 9, 4)).unmet, []);
+eq('Mon 3h -> current unmet', un(check(9, block(10, 9, 3))), ['this']);
+eq('Mon 4h -> nothing unmet', un(check(9, block(10, 9, 4))), []);
 // Monday to Wednesday with only the 4h: "this week" appeal, whatever next week holds
 eq('Mon exactly 4h -> this_week appeal', check(9, block(10, 9, 4)).appeal, 'this_week');
 eq('Wed exactly 4h + 4h next week -> this_week appeal', check(11, [...block(12, 9, 4), ...block(17, 9, 4)]).appeal, 'this_week');
 eq('Mon 5h -> no appeal (min + 1h reached)', check(9, block(10, 9, 5)).appeal, null);
 eq('Mon 6h -> no appeal', check(9, block(10, 9, 6)).appeal, null);
 // Thursday: 2h is enough this week; only the minimum and thin next week -> "next week" appeal
-eq('Thu 1h -> current unmet', check(12, block(13, 9, 1)).unmet, ['current']);
-eq('Thu 2h -> nothing unmet', check(12, block(13, 9, 2)).unmet, []);
+eq('Thu 1h -> current unmet', un(check(12, block(13, 9, 1))), ['this']);
+eq('Thu 2h -> nothing unmet', un(check(12, block(13, 9, 2))), []);
 eq('Thu 2h, nothing next week -> next_week appeal', check(12, block(13, 9, 2)).appeal, 'next_week');
 eq('Thu 2h, next week 3h -> next_week appeal', check(12, [...block(13, 9, 2), ...block(17, 9, 3)]).appeal, 'next_week');
 eq('Thu 2h, next week 4h -> no appeal', check(12, [...block(13, 9, 2), ...block(17, 9, 4)]).appeal, null);
 eq('Thu 4h, nothing next week -> no appeal', check(12, block(13, 9, 4)).appeal, null);
 // picks count as availability
-eq('Thu 1h + a 1h pick -> ok', check(12, block(13, 9, 1), [{ start: at(13, 12), minutes: 60 }]).unmet, []);
+eq('Thu 1h + a 1h pick -> ok', un(check(12, block(13, 9, 1), [{ start: at(13, 12), minutes: 60 }])), []);
 // Friday: the current week is ignored, 4h next week required
-eq('Fri 0h today, 3h next week -> next unmet', check(13, block(17, 9, 3)).unmet, ['next']);
-eq('Fri 4h next week -> ok', check(13, block(17, 9, 4)).unmet, []);
-eq('Fri time on the same day does not count', check(13, block(13, 18, 2)).unmet, ['next']);
+eq('Fri 0h today, 3h next week -> next unmet', un(check(13, block(17, 9, 3))), ['next']);
+eq('Fri 4h next week -> ok', un(check(13, block(17, 9, 4))), []);
+eq('Fri time on the same day does not count', un(check(13, block(13, 18, 2))), ['next']);
 // Saturday / Sunday: only next week, 4h
-eq('Sat 3h next week -> next unmet', check(14, block(16, 9, 3)).unmet, ['next']);
-eq('Sat 4h next week -> ok', check(14, block(16, 9, 4)).unmet, []);
+eq('Sat 3h next week -> next unmet', un(check(14, block(16, 9, 3))), ['next']);
+eq('Sat 4h next week -> ok', un(check(14, block(16, 9, 4))), []);
 // Fri-Sun: only the minimum next week -> plain "Consider marking more times" (they are already on that week)
 eq('Fri exactly 4h next week -> more appeal', check(13, block(17, 9, 4)).appeal, 'more');
 eq('Sat exactly 4h next week -> more appeal', check(14, block(16, 9, 4)).appeal, 'more');
@@ -63,29 +65,45 @@ const D = (d) => `2026-11-${String(d).padStart(2, '0')}`;
 const checkOff = (day, slots, off, picks = []) => W.checkWeeks(TZ, slots, picks, LEAD, at(day, 9), off);
 
 // the minimum shrinks with the days left, rounded up to a whole 15 min row
-eq('Mon, Fri off -> this week needs 3.25h', checkOff(9, [], [D(13)]).current.need, 195);
-eq('Mon, Thu+Fri off -> this week needs 2.5h', checkOff(9, [], [D(12), D(13)]).current.need, 150);
-eq('Mon, Thu+Fri off: 2.5h is enough', checkOff(9, block(10, 9, 2).concat(block(10, 12, 0.5)), [D(12), D(13)]).unmet, []);
-eq('Mon, Thu+Fri off: 2.25h is not', checkOff(9, block(10, 9, 2).concat([at(10, 12)]), [D(12), D(13)]).unmet, ['current']);
-eq('Mon: min stays the rule figure while need shrinks', [checkOff(9, [], [D(13)]).current.min, checkOff(9, [], [D(13)]).current.need], [240, 195]);
+eq('Mon, one day off -> the 4h bar does not move', checkOff(9, [], [D(13)]).current.need, 240);
+eq('Mon, two days off -> this week needs 3h', checkOff(9, [], [D(12), D(13)]).current.need, 180);
+eq('Mon, three days off -> this week needs 2h', checkOff(9, [], [D(11), D(12), D(13)]).current.need, 120);
+eq('Mon, four days off -> this week needs 1h', checkOff(9, [], [D(10), D(11), D(12), D(13)]).current.need, 60);
+eq('Mon, two days off: 3h is enough', un(checkOff(9, block(10, 9, 3), [D(12), D(13)])), []);
+eq('Mon, two days off: 2.75h is not', un(checkOff(9, block(10, 9, 2.75), [D(12), D(13)])), ['this']);
+eq('Mon: min stays the rule figure while need shrinks', [checkOff(9, [], [D(12), D(13)]).current.min, checkOff(9, [], [D(12), D(13)]).current.need], [240, 180]);
 // time on an unavailable day is not room: Thursday's 2h over 4 days is 1.75h
-eq('Thu, Fri off -> this week needs 1.75h', checkOff(12, [], [D(13)]).current.need, 105);
-eq('Thu, Fri off: 1.75h is enough', checkOff(12, block(12, 18, 1.75), [D(13)]).unmet, []);
+eq('Thu, Fri off -> this week still needs 2h', checkOff(12, [], [D(13)]).current.need, 120);
+eq('Thu, Fri off: 2h is enough', un(checkOff(12, block(12, 17, 2), [D(13)])), []);
 // Fri-Sun judge next week
-eq('Fri, Mon+Tue off next week -> needs 2.5h', checkOff(13, [], [D(16), D(17)]).next.need, 150);
-eq('Fri, Mon+Tue off next week: 2.5h is enough', checkOff(13, block(18, 9, 2.5), [D(16), D(17)]).unmet, []);
+eq('Fri, Mon+Tue off next week -> needs 3h', checkOff(13, [], [D(16), D(17)]).next.need, 180);
+eq('Fri, Mon+Tue off next week: 3h is enough', un(checkOff(13, block(18, 9, 3), [D(16), D(17)])), []);
 
 // a week with no free days asks for nothing and nudges nobody
 const allOffThis = [D(9), D(10), D(11), D(12), D(13)];
 const allOffNext = [D(16), D(17), D(18), D(19), D(20)];
-eq('Mon, whole week off -> nothing unmet', checkOff(9, [], allOffThis).unmet, []);
-eq('Mon, whole week off -> need 0 and no appeal', [checkOff(9, [], allOffThis).current.need, checkOff(9, [], allOffThis).appeal], [0, null]);
-eq('Mon, whole week off -> freeDays 0', checkOff(9, [], allOffThis).current.freeDays, 0);
-eq('Fri, whole next week off -> nothing unmet and no appeal', [checkOff(13, [], allOffNext).unmet, checkOff(13, [], allOffNext).appeal], [[], null]);
+// A week with nothing left cannot be asked for anything, so the 4h moves to the next week with a day.
+eq('Mon, whole week off -> the 4h rolls to next week', un(checkOff(9, [], allOffThis)), ['next']);
+eq('Mon, whole week off -> the rolled week asks the full 4h', checkOff(9, [], allOffThis).rolled.need, 240);
+eq('Mon, whole week off + 4h next week -> nothing unmet', un(checkOff(9, block(17, 9, 4), allOffThis)), []);
+eq('Mon, whole week off + 3h next week -> still unmet', un(checkOff(9, block(17, 9, 3), allOffThis)), ['next']);
+eq('Mon, whole week off: this week itself asks for nothing', [checkOff(9, [], allOffThis).current.need, checkOff(9, [], allOffThis).current.freeDays], [0, 0]);
+// Friday already judges next week, so a blocked next week rolls one further out
+eq('Fri, whole next week off -> rolls to the week after', un(checkOff(13, [], allOffNext)), ['later']);
+eq('Fri, whole next week off -> that is the Nov 23 week', checkOff(13, [], allOffNext).rolled.mon, { y: 2026, m: 11, d: 23 });
+eq('Fri, whole next week off + 4h the week after -> nothing unmet', un(checkOff(13, block(24, 9, 4), allOffNext)), []);
+// two blocked weeks in a row roll twice
+eq('Mon, this and next week off -> rolls two weeks out', un(checkOff(9, [], [...allOffThis, ...allOffNext])), ['later']);
+eq('Mon, this and next week off -> that is the Nov 23 week', checkOff(9, [], [...allOffThis, ...allOffNext]).rolled.mon, { y: 2026, m: 11, d: 23 });
+// the rolled week keeps the scaling and the polite nudge
+eq('Mon, whole week off + two days off next week -> asks 3h', checkOff(9, [], [...allOffThis, D(19), D(20)]).rolled.need, 180);
+eq('Mon, whole week off + exactly 4h next week -> more appeal', checkOff(9, block(17, 9, 4), allOffThis).appeal, 'more');
+eq('Mon, whole week off + 6h next week -> no appeal', checkOff(9, block(17, 9, 6), allOffThis).appeal, null);
+
 // the appeal follows the scaled bar too
 eq('Fri, Mon off next week: 4.75h is under the scaled 5h bar -> appeal', checkOff(13, block(17, 9, 4.75), [D(16)]).appeal, 'more');
 eq('Fri, Mon off next week: 5h reaches the scaled bar -> no appeal', checkOff(13, block(17, 9, 5), [D(16)]).appeal, null);
-eq('Mon, Fri off: exactly the scaled 3.25h -> this_week appeal', checkOff(9, block(10, 9, 3.25), [D(13)]).appeal, 'this_week');
+eq('Mon, two days off: exactly the scaled 3h -> this_week appeal', checkOff(9, block(10, 9, 3), [D(12), D(13)]).appeal, 'this_week');
 
 // dashboard statuses
 const row = (o) => ({ has_unseen_change: false, slot_count: 0, ranked_count: 0, suggested_count: 0, upcoming_slots: [], upcoming_picks: [], unavailable_days: [], ...o });
@@ -113,8 +131,8 @@ eq('picked something, suggestions exist -> judged on valid time', st({ suggested
 
 // dashboard: the same scale, and a fully blocked week is never "few"
 const stOff = (o, day, off) => L.linkStatus(row({ ...o, unavailable_days: off }), TZ, at(day, 9));
-eq('dash Mon, Fri off: 3h of 3.25h -> few', stOff({ slot_count: 12, upcoming_slots: iso(block(10, 9, 3)) }, 9, [D(13)]), 'Few valid times this week');
-eq('dash Mon, Fri off: 3.25h -> up to date', stOff({ slot_count: 13, upcoming_slots: iso(block(10, 9, 3.25)) }, 9, [D(13)]), 'Up to date');
+eq('dash Mon, two days off: 2h of the scaled 3h -> few', stOff({ slot_count: 8, upcoming_slots: iso(block(10, 9, 2)) }, 9, [D(12), D(13)]), 'Few valid times this week');
+eq('dash Mon, two days off: 3h -> up to date', stOff({ slot_count: 12, upcoming_slots: iso(block(10, 9, 3)) }, 9, [D(12), D(13)]), 'Up to date');
 eq('dash Fri, Mon off next week: 4.5h of the scaled 5h -> few next week', stOff({ slot_count: 18, upcoming_slots: iso(block(17, 9, 4.5)) }, 13, [D(16)]), 'Few valid times next week');
 eq('dash Fri, Mon off next week: 5h -> up to date', stOff({ slot_count: 20, upcoming_slots: iso(block(17, 9, 5)) }, 13, [D(16)]), 'Up to date');
 eq('dash whole week off -> never few or none', stOff({ slot_count: 4, upcoming_slots: iso(block(16, 9, 1)) }, 13, allOffNext), 'Up to date');

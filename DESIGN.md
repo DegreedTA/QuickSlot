@@ -196,7 +196,7 @@ Shared primitives live in `src/components/ui` (CSS in `src/styles/primitives.css
 - **Week tabs** (recruiter): 140x52, 10px radius, selected True Blue with the free hours underneath.
 - **More menu:** a 46px outlined circle (True Blue border, True Blue 050 fill) opening a 220px menu: Rename link, Deactivate link.
 - **Suggested-time option** (candidate): 48px, 10px radius; not picked is a Mist outline with an empty ring, picked is the orange block with the Moonshot rank circle.
-- **Week notice** (candidate): True Blue 050 bar when hours are still required, gold bar for the polite "consider next week" appeal.
+- **Week notice** (candidate): gold bar when hours are still required (it is the one asking for something), True Blue 050 bar for the softer "consider marking more times" nudge.
 - **Save bar:** check icon, "Saved 8:26 PM · 6 picks · 7.25 h free", and the `lg` "I'm done →" button.
 
 ### Calendar (shared by recruiter and candidate)
