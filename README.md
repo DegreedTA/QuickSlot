@@ -8,28 +8,15 @@ A rebuild of the interview-availability tool that was originally made in Lovable
 
 Links expire after 90 days, or sooner if a recruiter deactivates them. The candidate side stores only availability and time zone.
 
-## Try it right now (no setup)
-
-You need [Node.js](https://nodejs.org) 22 or newer.
-
-```bash
-npm install
-npm run dev
-```
-
-Open the address it prints. With no database configured it runs in **demo mode**: the passcode is `demo-passcode` and everything is stored in your own browser only. Nothing is shared with anyone.
-
 ## Where it runs
-
-QuickSlot is live and has three parts:
 
 | Part | Where | Address |
 | --- | --- | --- |
 | Website (static files) | Vercel | https://quickslot.degreedlabs.com (also https://quickslot-degreed.vercel.app) |
 | Code | GitHub | https://github.com/DegreedTA/QuickSlot |
-| Database | Supabase | Project URL and anon key are in Vercel's environment variables |
+| Database | Supabase | - |
 
-It replaces the original app at `schedule.degreedlabs.com`, which stopped working when its Lovable account was disabled. Old links (`/<12 characters>`) do not work, because the old data lived in the old backend. Create fresh links in the new tool.
+It replaces the original app at `schedule.degreedlabs.com`. Old links (`/<12 characters>`) do not work, because the data lived in the old backend. Create fresh links in the new tool.
 
 ### Deploying changes
 
@@ -38,7 +25,7 @@ Vercel builds from this repository (build command `npm run build`, output folder
 The site needs two environment variables in Vercel (Settings > Environment Variables, for Production):
 
 - `VITE_SUPABASE_URL`: the Supabase **Project URL**.
-- `VITE_SUPABASE_ANON_KEY`: the Supabase **anon public** key. It is meant to be public. It cannot read the tables; it can only call the functions in `schema.sql`.
+- `VITE_SUPABASE_ANON_KEY`: the Supabase **anon public** key. It cannot read the tables, only call the functions in `schema.sql`.
 
 If either is missing, the site silently falls back to demo mode (data stored in each visitor's own browser, nothing shared), so check them first if recruiters report that links disappear.
 
@@ -46,7 +33,7 @@ Vercel's **Deployment Protection** (Settings > Deployment Protection) must not r
 
 ### Custom domain
 
-`quickslot.degreedlabs.com` is added in Vercel under Settings > Domains. The DNS records Vercel shows (a CNAME, and a TXT record to verify) are added by whoever manages the `degreedlabs.com` zone (IT).
+`quickslot.degreedlabs.com` is added in Vercel under Settings > Domains. The DNS records Vercel shows are added by the `degreedlabs.com` zone's manager.
 
 ### Database (Supabase)
 
@@ -61,7 +48,7 @@ Only needed when setting up a new database or changing the schema:
 
 3. Copy the **Project URL** and **anon public** key from **Project Settings > API** into the Vercel variables above, then redeploy.
 
-The Vercel and Supabase accounts are owned by the Talent Acquisition team account (not one person's), so the tool does not depend on one person leaving again. Keep it that way.
+The Vercel and Supabase accounts are owned by the Talent Acquisition team account.
 
 ### Check it works
 
