@@ -30,6 +30,8 @@ drop function if exists public.manager_set_label(text, text, text);
 drop function if exists public.manager_set_suggestions(text, text[], jsonb, text);
 drop function if exists public.manager_deactivate(text, text, boolean);
 drop function if exists public._auth(text);
+-- set_availability gained a 4th argument (unavailable days), so the 3-argument version goes.
+drop function if exists public.set_availability(text, timestamptz[], text);
 
 -- ---------------------------------------------------------------- tables
 create table if not exists public.batches (
@@ -49,6 +51,7 @@ create table if not exists public.links (
   active                    boolean not null default true,
   timezone                  text not null default 'UTC',        -- candidate's chosen zone
   slots                     timestamptz[] not null default '{}', -- start of each free 15 min block (UTC)
+  unavailable_days          date[] not null default '{}',        -- whole days off, as dates in `timezone`
   suggested_slots           jsonb not null default '[]'::jsonb,  -- [{ "start": iso, "minutes": 30 }]
   suggested_slots_timezone  text,
   ranked_choices            timestamptz[] not null default '{}', -- candidate's ranked picks (starts)
@@ -56,6 +59,8 @@ create table if not exists public.links (
   constraint label_len   check (char_length(label) <= 120)
 );
 create index if not exists links_batch_idx on public.links (batch_id);
+-- For databases created before these columns existed (create table above does nothing then).
+alter table public.links add column if not exists unavailable_days date[] not null default '{}';
 
 create table if not exists public.manager_config (
   id             int primary key default 1 check (id = 1),
@@ -127,6 +132,23 @@ as $$
   ) s
 $$;
 
+-- Keeps only weekdays, from today (in the candidate's zone) up to 60 days out, deduplicated.
+create or replace function public._clean_days(p_in date[], p_timezone text)
+returns date[]
+language sql stable
+as $$
+  select coalesce(array_agg(d order by d), '{}')
+  from (
+    select distinct d
+      from unnest(coalesce(p_in, '{}')) as d
+     where extract(isodow from d) between 1 and 5
+       and d >= (now() at time zone p_timezone)::date
+       and d <  (now() at time zone p_timezone)::date + 60
+     order by d
+     limit 40
+  ) s
+$$;
+
 -- Removes suggested times (and the candidate's ranked picks) that have already started.
 -- It does not touch updated_at, so cleaning up never shows as a "new update".
 -- Called by the read functions below, and every 15 minutes by pg_cron when that is enabled
@@ -169,6 +191,7 @@ begin
     'token', l.token,
     'timezone', l.timezone,
     'slots', to_jsonb(l.slots),
+    'unavailable_days', to_jsonb(l.unavailable_days),
     'suggested_slots', l.suggested_slots,
     'suggested_slots_timezone', l.suggested_slots_timezone,
     'ranked_choices', to_jsonb(l.ranked_choices),
@@ -178,11 +201,15 @@ begin
 end;
 $$;
 
-create or replace function public.set_availability(p_token text, p_slots timestamptz[], p_timezone text)
+-- p_unavailable_days: null keeps whatever is stored, an array replaces it. A day in that list can
+-- hold no free blocks, so slots landing on one are dropped here rather than trusted to the site.
+create or replace function public.set_availability(
+  p_token text, p_slots timestamptz[], p_timezone text, p_unavailable_days date[] default null
+)
 returns timestamptz
 language plpgsql security definer set search_path = public
 as $$
-declare l public.links%rowtype; ts timestamptz;
+declare l public.links%rowtype; ts timestamptz; days date[];
 begin
   select * into l from public.links where token = lower(trim(p_token)) for update;
   if not found or not l.active or l.expires_at < now() then
@@ -191,8 +218,16 @@ begin
   if not public._valid_zone(p_timezone) then
     raise exception 'bad_timezone' using errcode = 'P0001';
   end if;
+  days := case when p_unavailable_days is null
+               then public._clean_days(l.unavailable_days, p_timezone)
+               else public._clean_days(p_unavailable_days, p_timezone) end;
   update public.links
-     set slots = public._clean_instants(p_slots),
+     set slots = coalesce((
+           select array_agg(t order by t)
+             from unnest(public._clean_instants(p_slots)) t
+            where not ((t at time zone p_timezone)::date = any (days))
+         ), '{}'),
+         unavailable_days = days,
          timezone = p_timezone,
          updated_at = now(),
          candidate_updated_at = now()
@@ -296,6 +331,10 @@ begin
           jsonb_array_length(l.suggested_slots) as suggested_count,
           cardinality(l.ranked_choices) as ranked_count,
           l.timezone,
+          -- Days the candidate marked unavailable, from today on in their own zone. The dashboard
+          -- scales the weekly minimum down by them, so past days would skew it.
+          coalesce((select jsonb_agg(d order by d) from unnest(l.unavailable_days) d
+                     where d >= (now() at time zone l.timezone)::date), '[]'::jsonb) as unavailable_days,
           -- Dashboard status "No/Few valid times this week": only for active links the candidate
           -- has answered and the recruiter has seen, and only the next 8 days (enough for Mon-Fri
           -- of this week, or of next week when it is the weekend). Empty otherwise to keep this small.
@@ -380,6 +419,7 @@ begin
     'batch', mates,
     'timezone', l.timezone,
     'slots', to_jsonb(l.slots),
+    'unavailable_days', to_jsonb(l.unavailable_days),
     'suggested_slots', l.suggested_slots,
     'suggested_slots_timezone', l.suggested_slots_timezone,
     'ranked_choices', to_jsonb(l.ranked_choices),
@@ -490,7 +530,7 @@ $$;
 revoke all on all functions in schema public from public, anon, authenticated;
 grant execute on function
   public.get_link(text),
-  public.set_availability(text, timestamptz[], text),
+  public.set_availability(text, timestamptz[], text, date[]),
   public.set_ranked_choices(text, timestamptz[]),
   public.manager_login(text),
   public.manager_logout(text),
@@ -501,7 +541,7 @@ grant execute on function
   public.manager_set_suggestions(text, text[], jsonb, text),
   public.manager_deactivate(text, text, boolean)
 to anon, authenticated;
--- set_manager_passcode, _auth, _valid_zone, _clean_instants and _prune_past stay private.
+-- set_manager_passcode, _auth, _valid_zone, _clean_instants, _clean_days and _prune_past stay private.
 
 -- Clean past suggested times every 15 minutes, whether or not anyone opens a link.
 -- Needs the pg_cron extension (Supabase: Database > Extensions > pg_cron). If it is not

@@ -200,6 +200,51 @@ ok('changing suggestions keeps the candidate\'s picks', rg2.ranked_choices.lengt
 const mg = (await q(`select public.manager_get_link($1, $2) as r`, [SES2, batchToks[1]]))[0].r;
 ok('manager sees batch mates', mg.batch.length === 3);
 
+// unavailable days: whole days the candidate marks off
+{
+  const tok = (await q(`select public.manager_create_links($1, 1, '{}') as r`, [SES2]))[0].r.links[0].token;
+  // a Monday and the Tuesday after it, at least 4 days out, plus the Saturday between
+  const at4 = new Date(Date.now() + 4 * 86400e3);
+  const mon = new Date(at4); while (mon.getUTCDay() !== 1) mon.setUTCDate(mon.getUTCDate() + 1);
+  const tue = new Date(mon); tue.setUTCDate(mon.getUTCDate() + 1);
+  const sat = new Date(mon); sat.setUTCDate(mon.getUTCDate() + 5);
+  const day = (d) => d.toISOString().slice(0, 10);
+  const slotOn = (d, h) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), h, 0, 0)).toISOString();
+  const bothDays = [slotOn(mon, 9), slotOn(mon, 10), slotOn(tue, 9)];
+  const get = async () => (await q(`select public.get_link($1) as r`, [tok]))[0].r;
+
+  await q(`select public.set_availability($1, $2::timestamptz[], 'UTC', $3::date[])`, [tok, bothDays, [day(tue)]]);
+  let g = await get();
+  ok('unavailable day stored and returned by get_link', JSON.stringify(g.unavailable_days) === JSON.stringify([day(tue)]), JSON.stringify(g.unavailable_days));
+  ok('slots on an unavailable day are dropped', g.slots.length === 2 && g.slots.every((t) => Date.parse(t) < Date.parse(slotOn(tue, 0))), JSON.stringify(g.slots));
+
+  // the old 3-argument call still works and leaves the stored days alone
+  await q(`select public.set_availability($1, $2::timestamptz[], 'UTC')`, [tok, bothDays]);
+  g = await get();
+  ok('3-argument call keeps the stored days', JSON.stringify(g.unavailable_days) === JSON.stringify([day(tue)]));
+  ok('3-argument call still drops slots on those days', g.slots.length === 2);
+
+  // weekends and past dates are refused; the array replaces what was there
+  const past = new Date(Date.now() - 10 * 86400e3);
+  await q(`select public.set_availability($1, '{}', 'UTC', $2::date[])`, [tok, [day(mon), day(sat), day(past), day(mon)]]);
+  g = await get();
+  ok('weekend, past and duplicate dates dropped', JSON.stringify(g.unavailable_days) === JSON.stringify([day(mon)]), JSON.stringify(g.unavailable_days));
+
+  // an empty array clears them (null, which the 3-argument call sends, does not)
+  await q(`select public.set_availability($1, '{}', 'UTC', '{}'::date[])`, [tok]);
+  ok('empty array clears the days', (await get()).unavailable_days.length === 0);
+
+  await q(`select public.set_availability($1, $2::timestamptz[], 'UTC', $3::date[])`, [tok, bothDays, [day(tue)]]);
+  const mgl = (await q(`select public.manager_get_link($1, $2, false) as r`, [SES2, tok]))[0].r;
+  ok('manager_get_link returns unavailable_days', JSON.stringify(mgl.unavailable_days) === JSON.stringify([day(tue)]));
+  const orow = (await q(`select public.manager_overview($1) as r`, [SES2]))[0].r.links.find((l) => l.token === tok);
+  ok('manager_overview returns unavailable_days', JSON.stringify(orow.unavailable_days) === JSON.stringify([day(tue)]), JSON.stringify(orow.unavailable_days));
+  // a day that has gone by is left out of the dashboard row but stays on the link
+  await q(`update public.links set unavailable_days = $2::date[] where token = $1`, [tok, [day(past), day(tue)]]);
+  const orow2 = (await q(`select public.manager_overview($1) as r`, [SES2]))[0].r.links.find((l) => l.token === tok);
+  ok('overview hides days that already passed', JSON.stringify(orow2.unavailable_days) === JSON.stringify([day(tue)]));
+}
+
 // labels, deactivate
 await q(`select public.manager_set_label($1, $2, 'Renamed')`, [SES2, tokA]);
 ok('label updated', (await q(`select public.manager_get_link($1, $2, false) as r`, [SES2, tokA]))[0].r.label === 'Renamed');

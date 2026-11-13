@@ -58,6 +58,131 @@
   border-bottom: 1px solid #e4e9f0;
 }
 .rc-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 4px 6px;
+  text-align: center;
+}
+.rc-wd {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  line-height: 1.3;
+  color: var(--text-body);
+  transition: color 0.2s;
+}
+.rc-dn {
+  display: block;
+  height: 46px;
+  line-height: 46px;
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--text-body);
+  transition: color 0.2s;
+}
+.rc-day.is-today .rc-wd,
+.rc-day.is-today .rc-dn {
+  color: var(--color-true-blue);
+  font-weight: 600;
+}
+/* An unavailable day reads as off even when it is today: grey wins over blue. */
+.rc-day.is-off .rc-wd,
+.rc-day.is-off .rc-dn {
+  color: var(--text-muted);
+}
+
+/* row of "Unavailable" checkboxes (candidate only) */
+.rc-offrow {
+  display: grid;
+  grid-template-columns: 64px repeat(5, minmax(0, 1fr));
+  padding-right: 12px;
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border-light);
+}
+.rc-offrow > div {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px 12px;
+}
+.rc-ck {
+  position: relative; /* keeps the visually hidden input inside its own label */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.rc-ck input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.rc-ck > i {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  box-sizing: border-box;
+  border-radius: 4px;
+  /* Slate, not a lighter grey: on the sunken background a lighter border would fall below the
+     3:1 contrast a control needs (WCAG 1.4.11). */
+  border: 1.5px solid var(--color-slate);
+  background: #fff;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  transition: background 0.15s, border-color 0.15s;
+}
+.rc-ck:hover > i {
+  border-color: var(--text-strong);
+}
+.rc-ck input:checked + i,
+.rc-ck input:indeterminate + i {
+  background: var(--color-slate);
+  border-color: var(--color-slate);
+}
+.rc-ck input:checked ~ .rc-ck-text,
+.rc-ck input:indeterminate ~ .rc-ck-text {
+  color: var(--text-body);
+}
+.rc-ck input:focus-visible + i {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.rc-ck:has(input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.rc-ck > i svg {
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.15s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rc-ck input:checked + i svg,
+.rc-ck input:indeterminate + i svg {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.rc-body {
+  display: grid;
+  grid-template-columns: 64px repeat(5, minmax(0, 1fr));
+  padding-right: 12px;
+}
+.rc-head {
+  background: #f4f6f9;
+  border-bottom: 1px solid #e4e9f0;
+}
+.rc-day {
   padding: 12px 8px;
   text-align: center;
   line-height: 1.35;
@@ -139,6 +264,42 @@
   background: rgba(244, 246, 249, 0.7);
   pointer-events: none;
 }
+.rc-off {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(135deg, var(--qs-off-bg) 0 9px, var(--qs-off-line) 9px 10px);
+  animation: rc-off-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes rc-off-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.rc-off-badge {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-strong);
+  white-space: nowrap;
+}
+.sw-off {
+  background: repeating-linear-gradient(135deg, var(--qs-off-bg) 0 9px, var(--qs-off-line) 9px 10px);
+}
 .ds-tip-wrap.rc-slot-wrap {
   position: absolute;
   left: 1px;
@@ -197,14 +358,53 @@ button.rc-slot {
 }
 
 
+@media (prefers-reduced-motion: reduce) {
+  .rc-ck > i svg {
+    transform: none;
+  }
+  .rc-ck input:checked + i svg,
+  .rc-ck input:indeterminate + i svg {
+    transform: none;
+  }
+}
+
 @media (max-width: 760px) {
   .rc-head,
   .rc-body {
     grid-template-columns: 40px repeat(5, minmax(0, 1fr));
     padding-right: 6px;
   }
+  .rc-offrow {
+    grid-template-columns: 40px repeat(5, minmax(0, 1fr));
+    padding-right: 6px;
+  }
   .rc-day {
-    padding: 8px 2px;
+    padding: 10px 2px 4px;
+  }
+  .rc-wd {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+  }
+  .rc-dn {
+    height: 36px;
+    line-height: 36px;
+    font-size: 20px;
+  }
+  /* only the box fits beside the others: the label stays for screen readers */
+  .rc-ck-text,
+  .rc-off-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .rc-off-badge {
+    padding: 6px;
   }
   .rc-hours > div {
     font-size: 11px;

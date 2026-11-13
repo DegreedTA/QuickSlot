@@ -57,8 +57,38 @@ eq('Fri 3h next week -> need, not appeal', check(13, block(17, 9, 3)).appeal, nu
 // a requirement is never higher than the time that can still be marked
 eq('Thu 7pm: Friday still gives room, need stays 2h', W.checkWeeks(TZ, [], [], LEAD, at(12, 19)).current.need, 120);
 
+// ---------------------------------------------------------------- unavailable days
+// Nov 2026: this week Mon 9 - Fri 13, next week Mon 16 - Fri 20.
+const D = (d) => `2026-11-${String(d).padStart(2, '0')}`;
+const checkOff = (day, slots, off, picks = []) => W.checkWeeks(TZ, slots, picks, LEAD, at(day, 9), off);
+
+// the minimum shrinks with the days left, rounded up to a whole 15 min row
+eq('Mon, Fri off -> this week needs 3.25h', checkOff(9, [], [D(13)]).current.need, 195);
+eq('Mon, Thu+Fri off -> this week needs 2.5h', checkOff(9, [], [D(12), D(13)]).current.need, 150);
+eq('Mon, Thu+Fri off: 2.5h is enough', checkOff(9, block(10, 9, 2).concat(block(10, 12, 0.5)), [D(12), D(13)]).unmet, []);
+eq('Mon, Thu+Fri off: 2.25h is not', checkOff(9, block(10, 9, 2).concat([at(10, 12)]), [D(12), D(13)]).unmet, ['current']);
+eq('Mon: min stays the rule figure while need shrinks', [checkOff(9, [], [D(13)]).current.min, checkOff(9, [], [D(13)]).current.need], [240, 195]);
+// time on an unavailable day is not room: Thursday's 2h over 4 days is 1.75h
+eq('Thu, Fri off -> this week needs 1.75h', checkOff(12, [], [D(13)]).current.need, 105);
+eq('Thu, Fri off: 1.75h is enough', checkOff(12, block(12, 18, 1.75), [D(13)]).unmet, []);
+// Fri-Sun judge next week
+eq('Fri, Mon+Tue off next week -> needs 2.5h', checkOff(13, [], [D(16), D(17)]).next.need, 150);
+eq('Fri, Mon+Tue off next week: 2.5h is enough', checkOff(13, block(18, 9, 2.5), [D(16), D(17)]).unmet, []);
+
+// a week with no free days asks for nothing and nudges nobody
+const allOffThis = [D(9), D(10), D(11), D(12), D(13)];
+const allOffNext = [D(16), D(17), D(18), D(19), D(20)];
+eq('Mon, whole week off -> nothing unmet', checkOff(9, [], allOffThis).unmet, []);
+eq('Mon, whole week off -> need 0 and no appeal', [checkOff(9, [], allOffThis).current.need, checkOff(9, [], allOffThis).appeal], [0, null]);
+eq('Mon, whole week off -> freeDays 0', checkOff(9, [], allOffThis).current.freeDays, 0);
+eq('Fri, whole next week off -> nothing unmet and no appeal', [checkOff(13, [], allOffNext).unmet, checkOff(13, [], allOffNext).appeal], [[], null]);
+// the appeal follows the scaled bar too
+eq('Fri, Mon off next week: 4.75h is under the scaled 5h bar -> appeal', checkOff(13, block(17, 9, 4.75), [D(16)]).appeal, 'more');
+eq('Fri, Mon off next week: 5h reaches the scaled bar -> no appeal', checkOff(13, block(17, 9, 5), [D(16)]).appeal, null);
+eq('Mon, Fri off: exactly the scaled 3.25h -> this_week appeal', checkOff(9, block(10, 9, 3.25), [D(13)]).appeal, 'this_week');
+
 // dashboard statuses
-const row = (o) => ({ has_unseen_change: false, slot_count: 0, ranked_count: 0, suggested_count: 0, upcoming_slots: [], upcoming_picks: [], ...o });
+const row = (o) => ({ has_unseen_change: false, slot_count: 0, ranked_count: 0, suggested_count: 0, upcoming_slots: [], upcoming_picks: [], unavailable_days: [], ...o });
 const iso = (xs) => xs.map((t) => new Date(t).toISOString());
 const st = (o, day = 9) => L.linkStatus(row(o), TZ, at(day, 9));
 eq('unseen change wins', st({ has_unseen_change: true, slot_count: 4, suggested_count: 2 }), 'New update');
@@ -80,6 +110,15 @@ eq('Sun: 6h next week -> up to date', st({ slot_count: 24, upcoming_slots: iso(b
 eq('Thu: 2h this week -> few', st({ slot_count: 8, upcoming_slots: iso(block(13, 9, 2)) }, 12), 'Few valid times this week');
 eq('Thu: 3h this week -> up to date', st({ slot_count: 12, upcoming_slots: iso(block(13, 9, 3)) }, 12), 'Up to date');
 eq('picked something, suggestions exist -> judged on valid time', st({ suggested_count: 2, ranked_count: 1, upcoming_picks: [{ start: new Date(at(10, 9)).toISOString(), minutes: 240 }] }), 'Up to date');
+
+// dashboard: the same scale, and a fully blocked week is never "few"
+const stOff = (o, day, off) => L.linkStatus(row({ ...o, unavailable_days: off }), TZ, at(day, 9));
+eq('dash Mon, Fri off: 3h of 3.25h -> few', stOff({ slot_count: 12, upcoming_slots: iso(block(10, 9, 3)) }, 9, [D(13)]), 'Few valid times this week');
+eq('dash Mon, Fri off: 3.25h -> up to date', stOff({ slot_count: 13, upcoming_slots: iso(block(10, 9, 3.25)) }, 9, [D(13)]), 'Up to date');
+eq('dash Fri, Mon off next week: 4.5h of the scaled 5h -> few next week', stOff({ slot_count: 18, upcoming_slots: iso(block(17, 9, 4.5)) }, 13, [D(16)]), 'Few valid times next week');
+eq('dash Fri, Mon off next week: 5h -> up to date', stOff({ slot_count: 20, upcoming_slots: iso(block(17, 9, 5)) }, 13, [D(16)]), 'Up to date');
+eq('dash whole week off -> never few or none', stOff({ slot_count: 4, upcoming_slots: iso(block(16, 9, 1)) }, 13, allOffNext), 'Up to date');
+eq('dash whole week off with nothing marked -> not "no valid times"', stOff({ slot_count: 4, upcoming_slots: iso(block(30, 9, 1)) }, 13, allOffNext), 'Up to date');
 
 // last update = the candidate's last change; creation time until they answer
 const base = { created_at: '2026-11-01T00:00:00Z', updated_at: '2026-11-07T00:00:00Z', candidate_updated_at: '2026-11-05T00:00:00Z' };

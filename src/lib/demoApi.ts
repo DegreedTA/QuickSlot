@@ -9,7 +9,7 @@ import {
   type Overview,
   type SuggestedSlot,
 } from './types';
-import { SLOT_MS, zonedToUtc, addDays, todayIn, mondayOf, calDiffDays } from './time';
+import { SLOT_MS, zonedToUtc, addDays, todayIn, mondayOf, calDiffDays, calKey, partsInZone } from './time';
 
 export const DEMO_PASSCODE = 'demo-passcode';
 const DEMO_SESSION = 'de'.repeat(32);
@@ -29,6 +29,8 @@ interface Row {
   active: boolean;
   timezone: string;
   slots: string[];
+  /** whole days off, 'YYYY-MM-DD' in `timezone`; older stored rows do not have it */
+  unavailable_days?: string[];
   suggested_slots: SuggestedSlot[];
   suggested_slots_timezone: string | null;
   ranked_choices: string[];
@@ -184,6 +186,24 @@ const clean = (xs: string[]): string[] => {
   return [...set].sort((a, b) => a - b).slice(0, 2000).map((t) => new Date(t).toISOString());
 };
 
+/** Same as _clean_days() in schema.sql: weekdays only, from today in `tz` up to 60 days out. */
+const cleanDays = (days: string[], tz: string): string[] => {
+  const today = calKey(todayIn(tz));
+  const limit = calKey(addDays(todayIn(tz), 60));
+  const out = new Set<string>();
+  for (const d of days ?? []) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d < today || d >= limit) continue;
+    const [y, m, dd] = d.split('-').map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, dd)).getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    out.add(d);
+  }
+  return [...out].sort().slice(0, 40);
+};
+
+/** The calendar date an instant falls on, in `tz`. */
+const dayOf = (iso: string, tz: string): string => calKey(partsInZone(Date.parse(iso), tz));
+
 /** Same as _prune_past() in schema.sql: past suggested times (and picks of them) are deleted, silently. */
 function prune(s: Store) {
   const now = Date.now();
@@ -222,6 +242,7 @@ export function createDemoApi(): Api {
         token: r.token,
         timezone: r.timezone,
         slots: r.slots,
+        unavailable_days: r.unavailable_days ?? [],
         suggested_slots: r.suggested_slots,
         suggested_slots_timezone: r.suggested_slots_timezone,
         ranked_choices: r.ranked_choices,
@@ -229,11 +250,15 @@ export function createDemoApi(): Api {
         expires_at: r.expires_at,
       } as CandidateResult);
     },
-    async setAvailability(token, slots, timezone) {
+    async setAvailability(token, slots, timezone, unavailableDays) {
       const s = load();
       const r = find(s, token);
       if (!r || !live(r)) throw new ApiError('link_unavailable');
-      r.slots = clean(slots);
+      // null/undefined keeps the stored days, as schema.sql does; an array replaces them
+      const days = cleanDays(unavailableDays ?? r.unavailable_days ?? [], timezone);
+      const off = new Set(days);
+      r.unavailable_days = days;
+      r.slots = clean(slots).filter((iso) => !off.has(dayOf(iso, timezone)));
       r.timezone = timezone;
       r.updated_at = r.candidate_updated_at = new Date().toISOString();
       save(s);
@@ -278,6 +303,7 @@ export function createDemoApi(): Api {
           suggested_count: r.suggested_slots.length,
           ranked_count: r.ranked_choices.length,
           timezone: r.timezone,
+          unavailable_days: (r.unavailable_days ?? []).filter((d) => d >= calKey(todayIn(r.timezone))),
           // same conditions as supabase/schema.sql: active, answered, already seen; next 8 days only
           ...(() => {
             const now = Date.now();
@@ -315,6 +341,7 @@ export function createDemoApi(): Api {
           active: true,
           timezone: 'UTC',
           slots: [],
+          unavailable_days: [],
           suggested_slots: [],
           suggested_slots_timezone: null,
           ranked_choices: [],
@@ -343,6 +370,7 @@ export function createDemoApi(): Api {
         batch: r.batch_id ? s.rows.filter((m) => m.batch_id === r.batch_id).map((m) => ({ token: m.token, label: m.label })) : [],
         timezone: r.timezone,
         slots: r.slots,
+        unavailable_days: r.unavailable_days ?? [],
         suggested_slots: r.suggested_slots,
         suggested_slots_timezone: r.suggested_slots_timezone,
         ranked_choices: r.ranked_choices,

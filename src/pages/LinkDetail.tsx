@@ -317,11 +317,19 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
     return { t, rank: i + 1, end: t + (s?.minutes ?? 30) * 60000 };
   });
   const freeGroups = groupByDay(slotArray, zone);
+  // Days off are the candidate's own calendar dates, so they are named in the candidate's zone.
+  const offDays = data.unavailable_days ?? [];
+  const futureOffDays = offDays.filter((d) => d >= calKey(todayIn(data.timezone)));
+  const offDayLabel = (key: string) => {
+    const [y, m, d] = key.split('-').map(Number);
+    return formatDayLong(zonedToUtc(y, m, d, 12, 0, data.timezone), data.timezone);
+  };
   const copyText = () => {
     const parts: string[] = [];
     if (picks.length) parts.push(`Preferred times (${tzLabel(zone)})\n${picks.map((p) => `${p.rank}. ${formatDayLong(p.t, zone)}, ${rangeLabel(p.t, p.end, zone)}`).join('\n')}`);
     const free = summaryText(slotArray, zone);
     if (free) parts.push(free);
+    if (futureOffDays.length) parts.push(`Not available: ${futureOffDays.map(offDayLabel).join(' · ')} (candidate's dates)`);
     return parts.join('\n\n');
   };
   const pickedCount = sug.visible.filter((s) => ranks.has(Date.parse(s.start))).length;
@@ -423,6 +431,10 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
               <i className="sw sw-suggested" aria-hidden="true" />
               Suggested times
             </span>
+            <span>
+              <i className="sw sw-off" aria-hidden="true" />
+              Unavailable
+            </span>
             {!expired && <strong className="legend-hint">Drag on the calendar to suggest a time</strong>}
           </div>
 
@@ -432,6 +444,8 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
             slots={slots}
             suggestions={suggestions}
             ranks={ranks}
+            offDays={offDays}
+            offDaysTz={data.timezone}
             label={`Candidate availability, ${formatCalShort(weekStart)} to ${formatCalShort(weekEnd)}, in ${tzLabel(zone)}`}
             windowStart={Math.ceil((now + LEAD_MS) / SLOT_MS) * SLOT_MS}
             onSuggestRange={expired ? undefined : onCalendarRange}

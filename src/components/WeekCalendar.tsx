@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { Check, Minus, Prohibit } from '@phosphor-icons/react';
 import { Tooltip } from './ui';
 import { COLUMN_PX, HOUR_PX, PX_PER_15, gridBackground, heightOf, rowAtY, topOf } from '../lib/calendarGeometry';
 import {
@@ -8,14 +9,18 @@ import {
   SLOTS_PER_HOUR,
   addDays,
   calKey,
-  formatCalShort,
+  formatCalLong,
   formatCalWeekday,
   formatDayLong,
   formatTime,
   slotInstantFor,
   todayIn,
+  zonedToUtc,
   type CalDate,
 } from '../lib/time';
+
+/** Stable empty default, so the memos below do not see a new array on every render. */
+const NO_DAYS: string[] = [];
 
 export interface Suggestion {
   start: number;
@@ -41,6 +46,12 @@ interface Props {
   onChange?: (next: Set<number>) => void;
   /** Candidate: true while a paint gesture is in progress (pointer pressed), false once it ends. */
   onPaintingChange?: (painting: boolean) => void;
+  /** Whole days the candidate marked off, as calKey 'YYYY-MM-DD' in `offDaysTz`. */
+  offDays?: string[];
+  /** The zone those dates belong to. The candidate's own zone; for the recruiter, the candidate's. */
+  offDaysTz?: string;
+  /** Candidate only: when set, the row of "Unavailable" checkboxes is shown. */
+  onOffDaysChange?: (next: string[]) => void;
   /** Touch only: a drag paints instead of scrolling. */
   paintMode?: boolean;
   /** No shadow, for use inside another card. */
@@ -79,6 +90,9 @@ export function WeekCalendar({
   onSuggestRange,
   onChange,
   onPaintingChange,
+  offDays = NO_DAYS,
+  offDaysTz,
+  onOffDaysChange,
   paintMode = false,
   flat = false,
   label,
@@ -127,6 +141,64 @@ export function WeekCalendar({
     return byCol;
   }, [days, instants, suggestions, ranks]);
 
+  // ------------------------------------------------- unavailable days
+  // The dates belong to a zone (the candidate's). When the calendar shows another zone, a date can
+  // cover part of one column or parts of two, so everything below works from instants, not columns.
+  const offTz = offDaysTz ?? tz;
+  const offRanges = useMemo(() => {
+    const out: [number, number][] = [];
+    for (const key of offDays) {
+      const [y, m, d] = key.split('-').map(Number);
+      if (!y || !m || !d) continue;
+      const next = addDays({ y, m, d }, 1);
+      out.push([zonedToUtc(y, m, d, 0, 0, offTz), zonedToUtc(next.y, next.m, next.d, 0, 0, offTz)]);
+    }
+    return out;
+  }, [offDays, offTz]);
+  const isOffAt = (t: number) => offRanges.some(([a, b]) => t >= a && t < b);
+
+  /** Contiguous runs of unavailable rows per column, for the hatched overlay. */
+  const offRuns = useMemo(
+    () =>
+      instants.map((col) => {
+        const out: { r: number; len: number }[] = [];
+        col.forEach((t, r) => {
+          if (!offRanges.some(([a, b]) => t >= a && t < b)) return;
+          const last = out[out.length - 1];
+          if (last && last.r + last.len === r) last.len++;
+          else out.push({ r, len: 1 });
+        });
+        return out;
+      }),
+    [instants, offRanges],
+  );
+  /** A column reads as unavailable only when every visible row is (always true in the same zone). */
+  const colOff = useMemo(() => offRuns.map((runs) => runs.length === 1 && runs[0].r === 0 && runs[0].len === ROWS), [offRuns]);
+
+  // The checkbox row: one per day plus one for the week. A day can be toggled while it still has a
+  // row that could be marked; that also disables the whole row while the page is locked.
+  const showOffRow = mode === 'edit' && !!onOffDaysChange;
+  const dayKeys = days.map((d) => calKey(d));
+  const canToggle = days.map((_, c) => endRow[c] > firstRow[c]);
+  const offSet = useMemo(() => new Set(offDays), [offDays]);
+  const toggleKeys = dayKeys.filter((_, c) => canToggle[c]);
+  const onCount = toggleKeys.filter((k) => offSet.has(k)).length;
+  const allOn = toggleKeys.length > 0 && onCount === toggleKeys.length;
+  const someOn = onCount > 0 && !allOn;
+  const weekBox = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (weekBox.current) weekBox.current.indeterminate = someOn;
+  }, [someOn]);
+
+  function setDaysOff(keys: string[], on: boolean) {
+    const next = new Set(offDays);
+    for (const k of keys) {
+      if (on) next.add(k);
+      else next.delete(k);
+    }
+    onOffDaysChange!([...next].sort());
+  }
+
   const colEl = useRef<(HTMLDivElement | null)[]>([]);
   const rowFromEvent = (c: number, e: { clientY: number }) => rowAtY(e.clientY - colEl.current[c]!.getBoundingClientRect().top);
 
@@ -168,7 +240,7 @@ export function WeekCalendar({
   }
 
   // ---------------------------------------------------------------- candidate: paint free time
-  const enabledAt = (t: number) => t >= windowStart && t < windowEnd;
+  const enabledAt = (t: number) => t >= windowStart && t < windowEnd && !isOffAt(t);
   function applyTo(draft: Set<number>, t: number, on: boolean) {
     if (!enabledAt(t)) return false;
     if (on === draft.has(t)) return false;
@@ -245,6 +317,11 @@ export function WeekCalendar({
     else if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
       const t = instants[c][r];
+      if (isOffAt(t)) {
+        setAnnounce('Unavailable');
+        setCursor({ c, r });
+        return;
+      }
       const draft = new Set(slots);
       if (applyTo(draft, t, !slots.has(t))) onChange!(draft);
       say(c, r, !slots.has(t));
@@ -290,14 +367,52 @@ export function WeekCalendar({
     <div className={`ds-card rc${flat ? ' is-flat' : ''}`} role="group" aria-label={label}>
       <div className="rc-head">
         <div />
-        {days.map((d) => (
-          <div key={calKey(d)} className={`rc-day${calKey(d) === todayKey ? ' is-today' : ''}`} aria-current={calKey(d) === todayKey ? 'date' : undefined}>
-            <b>{formatCalWeekday(d)}</b>
-            <br />
-            <span>{formatCalShort(d)}</span>
+        {days.map((d, c) => (
+          <div
+            key={calKey(d)}
+            className={`rc-day${calKey(d) === todayKey ? ' is-today' : ''}${colOff[c] ? ' is-off' : ''}`}
+            aria-current={calKey(d) === todayKey ? 'date' : undefined}
+          >
+            <span className="rc-wd" aria-hidden="true">{formatCalWeekday(d)}</span>
+            <span className="rc-dn" aria-hidden="true">{d.d}</span>
+            <span className="sr-only">{formatCalLong(d)}</span>
           </div>
         ))}
       </div>
+      {showOffRow && (
+        <div className="rc-offrow">
+          <div>
+            <label className="rc-ck">
+              <input
+                ref={weekBox}
+                type="checkbox"
+                checked={allOn}
+                disabled={toggleKeys.length === 0}
+                aria-label="Mark the whole week unavailable"
+                onChange={(e) => setDaysOff(toggleKeys, e.target.checked)}
+              />
+              <i aria-hidden="true">
+                {allOn ? <Check size={11} weight="bold" /> : someOn ? <Minus size={11} weight="bold" /> : null}
+              </i>
+            </label>
+          </div>
+          {days.map((d, c) => (
+            <div key={calKey(d)}>
+              <label className="rc-ck">
+                <input
+                  type="checkbox"
+                  checked={offSet.has(dayKeys[c])}
+                  disabled={!canToggle[c]}
+                  aria-label={`Unavailable on ${formatCalLong(d)}`}
+                  onChange={(e) => setDaysOff([dayKeys[c]], e.target.checked)}
+                />
+                <i aria-hidden="true">{offSet.has(dayKeys[c]) ? <Check size={11} weight="bold" /> : null}</i>
+                <span className="rc-ck-text">Unavailable</span>
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
       <div
         ref={bodyEl}
         className={`rc-body${live ? ' is-live' : ''}${mode === 'edit' && paintMode ? ' is-painting' : ''}`}
@@ -338,6 +453,18 @@ export function WeekCalendar({
           >
             {firstRow[c] > 0 && <div className="rc-past" style={{ top: 0, height: Math.min(firstRow[c], ROWS) * PX_PER_15 }} aria-hidden="true" />}
             {endRow[c] < ROWS && <div className="rc-past" style={{ bottom: 0, height: (ROWS - Math.max(endRow[c], 0)) * PX_PER_15 }} aria-hidden="true" />}
+
+            {/* Before the slots on purpose: the recruiter's suggestions stay on top and clickable. */}
+            {offRuns[c].map(({ r, len }) => (
+              <div key={`o${r}`} className="rc-off" aria-hidden="true" style={{ top: topOf(r * 15), height: len * PX_PER_15 }}>
+                {len * PX_PER_15 >= HOUR_PX && (
+                  <span className="rc-off-badge">
+                    <Prohibit size={14} weight="bold" aria-hidden />
+                    <span className="rc-off-label">Unavailable</span>
+                  </span>
+                )}
+              </div>
+            ))}
 
             {free[c].map(({ r, len }) => {
               const from = instants[c][r];

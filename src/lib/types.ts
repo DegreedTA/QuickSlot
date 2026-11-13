@@ -9,6 +9,8 @@ export interface CandidateLinkData {
   token: string;
   timezone: string;
   slots: string[];
+  /** Whole days the candidate marked off, as 'YYYY-MM-DD' in `timezone`. */
+  unavailable_days: string[];
   suggested_slots: SuggestedSlot[];
   suggested_slots_timezone: string | null;
   ranked_choices: string[];
@@ -34,6 +36,8 @@ export interface LinkRow {
   suggested_count: number;
   ranked_count: number;
   timezone: string;
+  /** Days the candidate marked off, from today on, as 'YYYY-MM-DD' in `timezone`. */
+  unavailable_days: string[];
   /** Next 8 days only; filled only for active, answered, already-seen links (empty otherwise). */
   upcoming_slots: string[];
   /** The candidate's ranked picks in the next 8 days, with their length. Same conditions as above. */
@@ -81,7 +85,7 @@ export interface Api {
   mode: 'supabase' | 'demo';
   // candidate
   getLink(token: string): Promise<CandidateResult>;
-  setAvailability(token: string, slots: string[], timezone: string): Promise<string>;
+  setAvailability(token: string, slots: string[], timezone: string, unavailableDays: string[]): Promise<string>;
   setRanked(token: string, choices: string[]): Promise<string>;
   // recruiter: sign in once with the shared passcode, then every call carries the session token
   managerLogin(passcode: string): Promise<string>;

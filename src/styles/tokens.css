@@ -76,4 +76,6 @@
   --qs-avail-edge: rgba(0, 98, 227, 0.8);
   --qs-pick-bg: #ffd6cd; /* Fry Sauce 32% on white */
   --qs-pick-edge: rgba(255, 127, 100, 0.9);
+  --qs-off-bg: #eef1f5; /* unavailable day, hatched */
+  --qs-off-line: #e2e7ee;
 }

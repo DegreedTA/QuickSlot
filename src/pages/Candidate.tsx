@@ -130,14 +130,18 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   const locked = !tzChosen;
   const [tz, setTz] = useState(() => (returning ? data.timezone : browserZone()));
   const [slots, setSlots] = useState<Set<number>>(() => new Set(data.slots.map((s) => Date.parse(s))));
+  const [offDays, setOffDays] = useState<string[]>(() => data.unavailable_days ?? []);
   const [ranked, setRanked] = useState<number[]>(() => data.ranked_choices.map((s) => Date.parse(s)));
   const [weekIdx, setWeekIdx] = useState(0);
   const [save, setSave] = useState<Save>(() => (returning || data.ranked_choices.length ? { kind: 'saved', at: Date.parse(data.updated_at) } : { kind: 'idle' }));
   const [paint, setPaint] = useState(false);
   const [done, setDone] = useState(false);
 
-  const latest = useRef({ slots, tz, ranked });
-  latest.current = { slots, tz, ranked };
+  const latest = useRef({ slots, tz, ranked, offDays });
+  latest.current = { slots, tz, ranked, offDays };
+  // Blocks removed because their day was marked unavailable, so unticking it in the same visit puts
+  // them back. This visit only: once the page is reloaded the day is simply empty.
+  const stash = useRef(new Map<string, number[]>());
   const timers = useRef<{ avail?: number; rank?: number }>({});
   const inflight = useRef(0);
   const dirty = useRef({ avail: false, rank: false });
@@ -166,10 +170,10 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
       inflight.current++;
       setSave({ kind: 'saving' });
       try {
-        const { slots: s, tz: z, ranked: r } = latest.current;
+        const { slots: s, tz: z, ranked: r, offDays: od } = latest.current;
         const ts =
           which === 'avail'
-            ? await api.setAvailability(token, [...s].sort((a, b) => a - b).map((t) => new Date(t).toISOString()), z)
+            ? await api.setAvailability(token, [...s].sort((a, b) => a - b).map((t) => new Date(t).toISOString()), z, od)
             : await api.setRanked(token, r.map((t) => new Date(t).toISOString()));
         inflight.current--;
         if (inflight.current === 0) setSave({ kind: 'saved', at: Date.parse(ts) || Date.now() });
@@ -248,10 +252,52 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
     schedule('avail', 300);
   }
 
+  /** The calendar date an instant falls on, in the candidate's zone. */
+  const dayKeyOf = (t: number) => calKey(partsInZone(t, tz));
+  const offSet = useMemo(() => new Set(offDays), [offDays]);
+
+  function changeOffDays(next: string[]) {
+    const after = new Set(next);
+    const added = next.filter((k) => !offSet.has(k));
+    const removed = offDays.filter((k) => !after.has(k));
+
+    const nextSlots = new Set(slots);
+    for (const key of added) {
+      const hit = [...nextSlots].filter((t) => dayKeyOf(t) === key);
+      if (hit.length) stash.current.set(key, hit);
+      hit.forEach((t) => nextSlots.delete(t));
+    }
+    for (const key of removed) {
+      // only what can still be marked: time may have passed since it was put away
+      for (const t of stash.current.get(key) ?? []) if (t >= windowStart && t < windowEnd) nextSlots.add(t);
+      stash.current.delete(key);
+    }
+    setOffDays(next);
+    setSlots(nextSlots);
+    latest.current = { ...latest.current, offDays: next, slots: nextSlots };
+    schedule('avail');
+
+    // Picks on a day that just went off are given up. They do not come back with the day: the
+    // candidate chooses again, because the recruiter may have changed the suggestions meanwhile.
+    const nextRanked = ranked.filter((t) => !added.includes(dayKeyOf(t)));
+    if (nextRanked.length !== ranked.length) {
+      setRanked(nextRanked);
+      latest.current = { ...latest.current, ranked: nextRanked };
+      schedule('rank', 500);
+    }
+  }
+
   function clearWeek() {
     const lo = slotInstantFor(weekStart, 0, tz);
     const hi = slotInstantFor(weekEnd, ROWS - 1, tz) + SLOT_MS;
-    changeSlots(new Set([...slots].filter((t) => t < lo || t >= hi)));
+    const weekKeys = Array.from({ length: 5 }, (_, i) => calKey(addDays(weekStart, i)));
+    for (const k of weekKeys) stash.current.delete(k); // the week is being emptied: nothing to put back
+    const nextOff = offDays.filter((k) => !weekKeys.includes(k));
+    const nextSlots = new Set([...slots].filter((t) => t < lo || t >= hi));
+    setOffDays(nextOff);
+    setSlots(nextSlots);
+    latest.current = { ...latest.current, offDays: nextOff, slots: nextSlots };
+    schedule('avail');
   }
 
   /** Rank is the click order; unpicking renumbers the rest because ranks come from the array position. */
@@ -288,9 +334,9 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   const expiresLabel = formatCalFull(todayIn(tz, Date.parse(data.expires_at)));
   // weekly minimums (free blocks + picked times count)
   const liveCheck = useMemo(
-    () => checkWeeks(tz, slots, pickedOnGrid, LEAD_MS),
+    () => checkWeeks(tz, slots, pickedOnGrid, LEAD_MS, Date.now(), offDays),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [tz, slots, pickedOnGrid, tick],
+    [tz, slots, pickedOnGrid, offDays, tick],
   );  // While a drag is in progress the notices keep what they showed when it started: adding or removing a notice
   // moves the calendar up or down in the middle of the gesture. They catch up when the pointer is released.
   const [painting, setPainting] = useState(false);
@@ -374,7 +420,7 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
                             className="pick-opt"
                             aria-pressed={!!r}
                             aria-label={`${d.label}, ${rangeLabel(s.start, s.start + s.minutes * 60000, tz)}${r ? `, picked number ${r}` : ''}`}
-                            disabled={locked}
+                            disabled={locked || offSet.has(dayKeyOf(s.start))}
                             onClick={() => toggleRank(s.start)}
                           >
                             {r ? <span className="pick-rank">{r}</span> : <span className="pick-ring" />}
@@ -465,6 +511,9 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
             slots={slots}
             onChange={changeSlots}
             onPaintingChange={setPainting}
+            offDays={offDays}
+            offDaysTz={tz}
+            onOffDaysChange={changeOffDays}
             windowStart={windowStart}
             windowEnd={locked ? -Infinity : windowEnd}
             suggestions={pickedOnGrid}
