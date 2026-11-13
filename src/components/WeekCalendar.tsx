@@ -39,6 +39,8 @@ interface Props {
   onSuggestRange?: (from: number, to: number) => void;
   /** Candidate: click or drag to mark / unmark free time. Called with the new set. */
   onChange?: (next: Set<number>) => void;
+  /** Candidate: true while a paint gesture is in progress (pointer pressed), false once it ends. */
+  onPaintingChange?: (painting: boolean) => void;
   /** Touch only: a drag paints instead of scrolling. */
   paintMode?: boolean;
   /** No shadow, for use inside another card. */
@@ -76,6 +78,7 @@ export function WeekCalendar({
   windowEnd = Infinity,
   onSuggestRange,
   onChange,
+  onPaintingChange,
   paintMode = false,
   flat = false,
   label,
@@ -183,6 +186,7 @@ export function WeekCalendar({
     const on = !slots.has(t);
     const draft = new Set(slots);
     paint.current = { on, draft, last: t, x: e.clientX, y: e.clientY };
+    onPaintingChange?.(true);
     if (applyTo(draft, t, on)) onChange!(new Set(draft));
     capture(e);
   }
@@ -207,6 +211,7 @@ export function WeekCalendar({
   function paintUp(e: PointerEvent<HTMLDivElement>) {
     if (!paint.current) return;
     paint.current = null;
+    onPaintingChange?.(false);
     release(e);
     setTimeout(() => {
       suppressClick.current = false;

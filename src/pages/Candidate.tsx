@@ -287,11 +287,17 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   const pickedOnGrid = useMemo(() => suggestions.filter((s) => ranks.has(s.start)), [suggestions, ranks]);
   const expiresLabel = formatCalFull(todayIn(tz, Date.parse(data.expires_at)));
   // weekly minimums (free blocks + picked times count)
-  const check = useMemo(
+  const liveCheck = useMemo(
     () => checkWeeks(tz, slots, pickedOnGrid, LEAD_MS),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tz, slots, pickedOnGrid, tick],
-  );
+  );  // While a drag is in progress the notices keep what they showed when it started: adding or removing a notice
+  // moves the calendar up or down in the middle of the gesture. They catch up when the pointer is released.
+  const [painting, setPainting] = useState(false);
+  const frozenCheck = useRef(liveCheck);
+  if (!painting) frozenCheck.current = liveCheck;
+  const check = painting ? frozenCheck.current : liveCheck;
+
   const weekIndex = (mon: CalDate) => weeks.findIndex((w) => calKey(w) === calKey(mon));
   const unmetDetail = check.unmet
     .map((w) => {
@@ -458,6 +464,7 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
             weekStart={weekStart}
             slots={slots}
             onChange={changeSlots}
+            onPaintingChange={setPainting}
             windowStart={windowStart}
             windowEnd={locked ? -Infinity : windowEnd}
             suggestions={pickedOnGrid}
