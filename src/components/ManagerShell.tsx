@@ -8,8 +8,8 @@ import { Badge, Button } from './ui';
 
 /** Shows the passcode screen until a recruiter signs in, then the top bar + content. */
 export function ManagerShell({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
-  const { passcode, signOut } = useSession();
-  if (!passcode) return <Login />;
+  const { session, signOut } = useSession();
+  if (!session) return <Login />;
   return (
     <div className="app">
       <header className="topbar">

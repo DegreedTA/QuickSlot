@@ -8,12 +8,28 @@
 --     public (anon) key cannot read or write them directly.
 --   * The website only talks to the database through the functions below.
 --   * Candidate functions need only the secret link token.
---   * Recruiter functions need the shared recruiter passcode on every call.
+--   * Recruiters sign in once with the shared passcode (manager_login) and get a random
+--     session token. Every other recruiter function needs that token. The token is stored
+--     only as a hash, expires 30 days after its last use (each use renews it), and is
+--     deleted by manager_logout or when the passcode is changed. The passcode itself is
+--     never kept by the website.
 --   * Candidates can never read the recruiter's private label.
 --
--- Recruiter functions never raise on a bad passcode (a raised error would roll
+-- Recruiter functions never raise on a bad passcode or session (a raised error would roll
 -- back the failed-attempt log and defeat the lockout). They return
--- { "error": "bad_passcode" | "too_many_attempts" } instead.
+-- { "error": "bad_passcode" | "too_many_attempts" } instead. "bad_passcode" on any call
+-- other than manager_login means the session is missing or expired: sign in again.
+
+-- Safe to re-run on a database set up before sessions existed: the recruiter functions
+-- changed their first argument from the passcode to a session token, so the old ones go.
+drop function if exists public.manager_check(text);
+drop function if exists public.manager_overview(text);
+drop function if exists public.manager_create_links(text, int, text[]);
+drop function if exists public.manager_get_link(text, text, boolean);
+drop function if exists public.manager_set_label(text, text, text);
+drop function if exists public.manager_set_suggestions(text, text[], jsonb, text);
+drop function if exists public.manager_deactivate(text, text, boolean);
+drop function if exists public._auth(text);
 
 -- ---------------------------------------------------------------- tables
 create table if not exists public.batches (
@@ -52,31 +68,37 @@ create table if not exists public.auth_failures (
   at timestamptz not null default now()
 );
 
+create table if not exists public.manager_sessions (
+  token_hash  text primary key,                       -- sha256 of the token; the token is never stored
+  created_at  timestamptz not null default now(),
+  expires_at  timestamptz not null
+);
+
 alter table public.batches        enable row level security;
 alter table public.links          enable row level security;
 alter table public.manager_config enable row level security;
 alter table public.auth_failures  enable row level security;
+alter table public.manager_sessions enable row level security;
 -- (No policies on purpose: direct table access is denied to anon/authenticated.)
 
 -- ------------------------------------------------------------- helpers
--- Returns 'ok', 'bad_passcode' or 'too_many_attempts'. Logs failures.
-create or replace function public._auth(p_passcode text)
+-- Checks a recruiter session token. Returns 'ok' or 'bad_passcode'. A valid token is
+-- renewed for another 30 days. Tokens are 256 bits of randomness, so a wrong one is not
+-- logged as a failed attempt (that would let a stale browser tab lock out the whole team).
+create or replace function public._auth(p_session text)
 returns text
 language plpgsql security definer set search_path = public
 as $$
-declare cfg public.manager_config%rowtype;
+declare h text;
 begin
-  select * into cfg from public.manager_config where id = 1;
-  delete from public.auth_failures where at < now() - interval '1 hour';
-  if (select count(*) from public.auth_failures where at > now() - interval '10 minutes') >= 20 then
-    return 'too_many_attempts';
-  end if;
-  if cfg.passcode_hash = ''
-     or p_passcode is null
-     or encode(sha256(convert_to(cfg.salt || p_passcode, 'UTF8')), 'hex') <> cfg.passcode_hash then
-    insert into public.auth_failures default values;
+  if p_session is null or p_session !~ '^[0-9a-f]{64}$' then
     return 'bad_passcode';
   end if;
+  h := encode(sha256(convert_to(p_session, 'UTF8')), 'hex');
+  update public.manager_sessions
+     set expires_at = now() + interval '30 days'
+   where token_hash = h and expires_at > now();
+  if not found then return 'bad_passcode'; end if;
   return 'ok';
 end;
 $$;
@@ -208,23 +230,53 @@ end;
 $$;
 
 -- ------------------------------------------------------ recruiter API
-create or replace function public.manager_check(p_passcode text)
+-- Signs a recruiter in. Checks the shared passcode and returns a new session token.
+-- Wrong attempts are logged; after 20 in 10 minutes all sign-ins are locked for 10 minutes.
+create or replace function public.manager_login(p_passcode text)
 returns jsonb
 language plpgsql security definer set search_path = public
 as $$
-declare a text := public._auth(p_passcode);
+declare cfg public.manager_config%rowtype; tok text;
 begin
-  if a <> 'ok' then return jsonb_build_object('error', a); end if;
+  select * into cfg from public.manager_config where id = 1;
+  delete from public.auth_failures where at < now() - interval '1 hour';
+  if (select count(*) from public.auth_failures where at > now() - interval '10 minutes') >= 20 then
+    return jsonb_build_object('error', 'too_many_attempts');
+  end if;
+  if cfg.passcode_hash = ''
+     or p_passcode is null
+     or encode(sha256(convert_to(cfg.salt || p_passcode, 'UTF8')), 'hex') <> cfg.passcode_hash then
+    insert into public.auth_failures default values;
+    return jsonb_build_object('error', 'bad_passcode');
+  end if;
+  delete from public.manager_sessions where expires_at <= now();
+  tok := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+  insert into public.manager_sessions (token_hash, expires_at)
+  values (encode(sha256(convert_to(tok, 'UTF8')), 'hex'), now() + interval '30 days');
+  return jsonb_build_object('token', tok);
+end;
+$$;
+
+-- Signs out: the token stops working immediately, on every device that has it.
+create or replace function public.manager_logout(p_session text)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if p_session is not null and p_session ~ '^[0-9a-f]{64}$' then
+    delete from public.manager_sessions
+     where token_hash = encode(sha256(convert_to(p_session, 'UTF8')), 'hex');
+  end if;
   return jsonb_build_object('ok', true);
 end;
 $$;
 
 -- Dashboard: counts plus every link, newest activity first. Labels included.
-create or replace function public.manager_overview(p_passcode text)
+create or replace function public.manager_overview(p_session text)
 returns jsonb
 language plpgsql security definer set search_path = public
 as $$
-declare a text := public._auth(p_passcode); result jsonb;
+declare a text := public._auth(p_session); result jsonb;
 begin
   if a <> 'ok' then return jsonb_build_object('error', a); end if;
   perform public._prune_past();
@@ -274,12 +326,12 @@ end;
 $$;
 
 -- Create one link, or a batch of up to 25. p_labels may be shorter than p_count.
-create or replace function public.manager_create_links(p_passcode text, p_count int, p_labels text[] default '{}')
+create or replace function public.manager_create_links(p_session text, p_count int, p_labels text[] default '{}')
 returns jsonb
 language plpgsql security definer set search_path = public
 as $$
 declare
-  a text := public._auth(p_passcode);
+  a text := public._auth(p_session);
   n int := least(greatest(coalesce(p_count, 1), 1), 25);
   bid uuid;
   tok text;
@@ -304,11 +356,11 @@ end;
 $$;
 
 -- Full link, with its batch mates. Opening a link marks its changes as seen.
-create or replace function public.manager_get_link(p_passcode text, p_token text, p_mark_seen boolean default true)
+create or replace function public.manager_get_link(p_session text, p_token text, p_mark_seen boolean default true)
 returns jsonb
 language plpgsql security definer set search_path = public
 as $$
-declare a text := public._auth(p_passcode); l public.links%rowtype; mates jsonb;
+declare a text := public._auth(p_session); l public.links%rowtype; mates jsonb;
 begin
   if a <> 'ok' then return jsonb_build_object('error', a); end if;
   perform public._prune_past();
@@ -339,11 +391,11 @@ begin
 end;
 $$;
 
-create or replace function public.manager_set_label(p_passcode text, p_token text, p_label text)
+create or replace function public.manager_set_label(p_session text, p_token text, p_label text)
 returns jsonb
 language plpgsql security definer set search_path = public
 as $$
-declare a text := public._auth(p_passcode);
+declare a text := public._auth(p_session);
 begin
   if a <> 'ok' then return jsonb_build_object('error', a); end if;
   update public.links set label = left(coalesce(p_label, ''), 120) where token = lower(trim(p_token));
@@ -353,11 +405,11 @@ $$;
 
 -- Suggest times to one link or to many (a whole batch). p_slots: [{ "start": iso, "minutes": 30 }]
 create or replace function public.manager_set_suggestions(
-  p_passcode text, p_tokens text[], p_slots jsonb, p_timezone text
+  p_session text, p_tokens text[], p_slots jsonb, p_timezone text
 ) returns jsonb
 language plpgsql security definer set search_path = public
 as $$
-declare a text := public._auth(p_passcode); cleaned jsonb; changed int;
+declare a text := public._auth(p_session); cleaned jsonb; changed int;
 begin
   if a <> 'ok' then return jsonb_build_object('error', a); end if;
   if not public._valid_zone(p_timezone) then
@@ -397,11 +449,11 @@ begin
 end;
 $$;
 
-create or replace function public.manager_deactivate(p_passcode text, p_token text, p_whole_batch boolean default false)
+create or replace function public.manager_deactivate(p_session text, p_token text, p_whole_batch boolean default false)
 returns jsonb
 language plpgsql security definer set search_path = public
 as $$
-declare a text := public._auth(p_passcode); bid uuid; n int;
+declare a text := public._auth(p_session); bid uuid; n int;
 begin
   if a <> 'ok' then return jsonb_build_object('error', a); end if;
   select batch_id into bid from public.links where token = lower(trim(p_token));
@@ -430,6 +482,7 @@ begin
          passcode_hash = encode(sha256(convert_to(s || p_new, 'UTF8')), 'hex')
    where id = 1;
   delete from public.auth_failures;
+  delete from public.manager_sessions; -- everyone signs in again with the new passcode
 end;
 $$;
 
@@ -439,7 +492,8 @@ grant execute on function
   public.get_link(text),
   public.set_availability(text, timestamptz[], text),
   public.set_ranked_choices(text, timestamptz[]),
-  public.manager_check(text),
+  public.manager_login(text),
+  public.manager_logout(text),
   public.manager_overview(text),
   public.manager_create_links(text, int, text[]),
   public.manager_get_link(text, text, boolean),

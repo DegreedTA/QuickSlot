@@ -12,6 +12,7 @@ import {
 import { SLOT_MS, zonedToUtc, addDays, todayIn, mondayOf, calDiffDays } from './time';
 
 export const DEMO_PASSCODE = 'demo-passcode';
+const DEMO_SESSION = 'de'.repeat(32);
 const KEY = 'quickslot-demo-v3';
 const DAY = 86400000;
 
@@ -201,7 +202,7 @@ function prune(s: Store) {
 
 const live = (r: Row) => r.active && Date.parse(r.expires_at) > Date.now();
 const needPass = (p: string) => {
-  if (p !== DEMO_PASSCODE) throw new ApiError('bad_passcode');
+  if (p !== DEMO_SESSION) throw new ApiError('bad_passcode');
 };
 const delay = <T,>(v: T): Promise<T> => new Promise((res) => setTimeout(() => res(v), 120));
 
@@ -248,8 +249,11 @@ export function createDemoApi(): Api {
       save(s);
       return delay(r.updated_at);
     },
-    async managerCheck(p) {
-      needPass(p);
+    async managerLogin(p) {
+      if (p !== DEMO_PASSCODE) throw new ApiError('bad_passcode');
+      return delay(DEMO_SESSION);
+    },
+    async managerLogout() {
       await delay(0);
     },
     async managerOverview(p): Promise<Overview> {

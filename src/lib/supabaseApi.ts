@@ -50,29 +50,33 @@ export function createSupabaseApi(url: string, anonKey: string): Api {
       rpc<string>('set_availability', { p_token: token, p_slots: slots, p_timezone: timezone }),
     setRanked: (token, choices) => rpc<string>('set_ranked_choices', { p_token: token, p_choices: choices }),
 
-    managerCheck: async (passcode) => {
-      await mgr('manager_check', { p_passcode: passcode });
+    managerLogin: async (passcode) => {
+      const r = await mgr<{ token: string }>('manager_login', { p_passcode: passcode });
+      return r.token;
     },
-    managerOverview: (passcode) => mgr<Overview>('manager_overview', { p_passcode: passcode }),
-    managerCreate: (passcode, count, labels) =>
-      mgr<CreatedLinks>('manager_create_links', { p_passcode: passcode, p_count: count, p_labels: labels }),
-    managerGetLink: (passcode, token, markSeen) =>
-      mgr<ManagerLinkResult>('manager_get_link', { p_passcode: passcode, p_token: token, p_mark_seen: markSeen }),
-    managerSetLabel: async (passcode, token, label) => {
-      await mgr('manager_set_label', { p_passcode: passcode, p_token: token, p_label: label });
+    managerLogout: async (session) => {
+      await mgr('manager_logout', { p_session: session });
     },
-    managerSetSuggestions: async (passcode, tokens, slots: SuggestedSlot[], timezone) => {
+    managerOverview: (session) => mgr<Overview>('manager_overview', { p_session: session }),
+    managerCreate: (session, count, labels) =>
+      mgr<CreatedLinks>('manager_create_links', { p_session: session, p_count: count, p_labels: labels }),
+    managerGetLink: (session, token, markSeen) =>
+      mgr<ManagerLinkResult>('manager_get_link', { p_session: session, p_token: token, p_mark_seen: markSeen }),
+    managerSetLabel: async (session, token, label) => {
+      await mgr('manager_set_label', { p_session: session, p_token: token, p_label: label });
+    },
+    managerSetSuggestions: async (session, tokens, slots: SuggestedSlot[], timezone) => {
       const r = await mgr<{ changed: number }>('manager_set_suggestions', {
-        p_passcode: passcode,
+        p_session: session,
         p_tokens: tokens,
         p_slots: slots,
         p_timezone: timezone,
       });
       return r.changed;
     },
-    managerDeactivate: async (passcode, token, wholeBatch) => {
+    managerDeactivate: async (session, token, wholeBatch) => {
       const r = await mgr<{ changed: number }>('manager_deactivate', {
-        p_passcode: passcode,
+        p_session: session,
         p_token: token,
         p_whole_batch: wholeBatch,
       });

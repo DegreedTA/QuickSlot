@@ -3,8 +3,11 @@ import { api } from './api';
 import { ApiError } from './types';
 import { browserZone } from './time';
 
-// The recruiter passcode lives in sessionStorage only: it is gone when the tab closes.
-const PASS_KEY = 'quickslot-recruiter-passcode';
+// After signing in with the shared passcode, the database returns a random session token.
+// Only that token is kept in this browser (the passcode is never stored). The database expires
+// it 30 days after its last use, so each visit renews it; "Sign out" deletes it there too.
+const SESSION_KEY = 'quickslot-recruiter-session';
+const OLD_PASS_KEY = 'quickslot-recruiter-passcode'; // earlier versions stored the passcode itself
 const ZONE_KEY = 'quickslot-recruiter-zone';
 
 function read(storage: Storage | undefined, key: string): string | null {
@@ -23,8 +26,17 @@ function write(storage: Storage | undefined, key: string, value: string | null) 
   }
 }
 
+function readSession(): string | null {
+  write(globalThis.localStorage, OLD_PASS_KEY, null);
+  write(globalThis.sessionStorage, OLD_PASS_KEY, null);
+  const raw = read(globalThis.localStorage, SESSION_KEY);
+  if (raw && /^[0-9a-f]{64}$/.test(raw)) return raw;
+  if (raw) write(globalThis.localStorage, SESSION_KEY, null);
+  return null;
+}
+
 interface Session {
-  passcode: string | null;
+  session: string | null;
   zone: string;
   setZone: (z: string) => void;
   signIn: (passcode: string) => Promise<void>;
@@ -34,18 +46,20 @@ interface Session {
 const Ctx = createContext<Session | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [passcode, setPasscode] = useState<string | null>(() => read(globalThis.sessionStorage, PASS_KEY));
+  const [session, setSession] = useState<string | null>(readSession);
   const [zone, setZoneState] = useState<string>(() => read(globalThis.localStorage, ZONE_KEY) ?? browserZone());
 
-  const signIn = useCallback(async (p: string) => {
-    await api.managerCheck(p); // throws ApiError on a wrong passcode
-    write(globalThis.sessionStorage, PASS_KEY, p);
-    setPasscode(p);
+  const signIn = useCallback(async (passcode: string) => {
+    const token = await api.managerLogin(passcode); // throws ApiError on a wrong passcode
+    write(globalThis.localStorage, SESSION_KEY, token);
+    setSession(token);
   }, []);
 
   const signOut = useCallback(() => {
-    write(globalThis.sessionStorage, PASS_KEY, null);
-    setPasscode(null);
+    const token = read(globalThis.localStorage, SESSION_KEY);
+    write(globalThis.localStorage, SESSION_KEY, null);
+    setSession(null);
+    if (token) api.managerLogout(token).catch(() => {}); // best effort: the token also expires by itself
   }, []);
 
   const setZone = useCallback((z: string) => {
@@ -53,7 +67,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setZoneState(z);
   }, []);
 
-  const value = useMemo(() => ({ passcode, zone, setZone, signIn, signOut }), [passcode, zone, setZone, signIn, signOut]);
+  const value = useMemo(() => ({ session, zone, setZone, signIn, signOut }), [session, zone, setZone, signIn, signOut]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
@@ -63,19 +77,19 @@ export function useSession(): Session {
   return v;
 }
 
-/** Calls a recruiter API function; if the saved passcode stopped working, signs out. */
+/** Calls a recruiter API function; if the saved session stopped working, signs out. */
 export function useManagerCall() {
-  const { passcode, signOut } = useSession();
+  const { session, signOut } = useSession();
   return useCallback(
-    async <T,>(fn: (passcode: string) => Promise<T>): Promise<T> => {
-      if (!passcode) throw new ApiError('bad_passcode');
+    async <T,>(fn: (session: string) => Promise<T>): Promise<T> => {
+      if (!session) throw new ApiError('bad_passcode');
       try {
-        return await fn(passcode);
+        return await fn(session);
       } catch (e) {
         if (e instanceof ApiError && e.code === 'bad_passcode') signOut();
         throw e;
       }
     },
-    [passcode, signOut],
+    [session, signOut],
   );
 }
