@@ -20,7 +20,13 @@ export const MIN_MINUTES_THU = 2 * 60;
 export const MIN_MINUTES_NEXT_WEEK = 4 * 60;
 
 /**
+ * Friday to Sunday: next week counts as "enough" from this much (6 h). Below it (5.5 h or less) the
+ * dashboard says "Few valid times next week" and the candidate sees the polite request for more times.
+ */
+export const COMFORTABLE_MINUTES_NEXT_WEEK = 6 * 60;
+
+/**
  * "Only the minimum" means: less than the minimum plus this much. A candidate who offers only the
- * minimum is gently asked for more times (see `appeal` in weeklyMinimum.ts).
+ * minimum is gently asked for more times (Mon-Thu; see `appeal` in weeklyMinimum.ts).
  */
 export const NEAR_MINIMUM_EXTRA_MINUTES = 60;

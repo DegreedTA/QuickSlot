@@ -148,6 +148,8 @@ Exactly one per link. Shown as pills that are only as wide as their words, 26px 
 | Up to date | White with a Mist border, Moonshot text |
 | Few valid times this week | Gold at 28%, text `#7A5A00` |
 | No valid times this week | Fry Sauce at 16%, text `#C7472B` |
+| Few valid times next week | Same as "Few valid times this week" (shown Fri-Sun) |
+| No valid times next week | Same as "No valid times this week" (shown Fri-Sun) |
 
 ### Named Rules
 **The Today Is Blue Rule.** In every calendar and day-column header, today's weekday and date are True Blue.

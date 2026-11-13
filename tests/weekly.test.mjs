@@ -49,7 +49,9 @@ eq('Sat 4h next week -> ok', check(14, block(16, 9, 4)).unmet, []);
 // Fri-Sun: only the minimum next week -> plain "Consider marking more times" (they are already on that week)
 eq('Fri exactly 4h next week -> more appeal', check(13, block(17, 9, 4)).appeal, 'more');
 eq('Sat exactly 4h next week -> more appeal', check(14, block(16, 9, 4)).appeal, 'more');
-eq('Sun 5h next week -> no appeal (min + 1h reached)', check(15, block(16, 9, 5)).appeal, null);
+eq('Sun 5h next week -> more appeal', check(15, block(16, 9, 5)).appeal, 'more');
+eq('Sun 5.5h next week -> more appeal', check(15, [...block(16, 9, 5), at(16, 15), at(16, 15, 15)]).appeal, 'more');
+eq('Sun 6h next week -> no appeal', check(15, block(16, 9, 6)).appeal, null);
 eq('Fri 6h next week -> no appeal', check(13, block(17, 9, 6)).appeal, null);
 eq('Fri 3h next week -> need, not appeal', check(13, block(17, 9, 3)).appeal, null);
 // a requirement is never higher than the time that can still be marked
@@ -65,8 +67,18 @@ eq('suggestions, no picks, but shared availability earlier -> still waiting for 
 eq('nothing at all', st({}), 'Waiting for availability');
 eq('answered, 4h this week -> up to date', st({ slot_count: 16, upcoming_slots: iso(block(10, 9, 4)) }), 'Up to date');
 eq('answered, 3h on a Monday -> few', st({ slot_count: 12, upcoming_slots: iso(block(10, 9, 3)) }), 'Few valid times this week');
-eq('answered, 2h on a Thursday -> up to date (bar is 2h)', st({ slot_count: 8, upcoming_slots: iso(block(13, 9, 2)) }, 12), 'Up to date');
 eq('answered, 0 valid -> none', st({ slot_count: 8, upcoming_slots: iso(block(17, 9, 2)) }), 'No valid times this week');
+// from Friday on the dashboard judges next week, and says so
+eq('Fri: only Friday times -> none next week', st({ slot_count: 16, upcoming_slots: iso(block(13, 18, 4)) }, 13), 'No valid times next week');
+eq('Fri: 4h next week -> few next week', st({ slot_count: 16, upcoming_slots: iso(block(17, 9, 4)) }, 13), 'Few valid times next week');
+eq('Fri: 5h next week -> few next week', st({ slot_count: 20, upcoming_slots: iso(block(17, 9, 5)) }, 13), 'Few valid times next week');
+eq('Fri: 5.5h next week -> few next week', st({ slot_count: 22, upcoming_slots: iso(block(17, 9, 5).concat([at(17, 14), at(17, 14, 15)])) }, 13), 'Few valid times next week');
+eq('Fri: exactly 6h next week -> up to date', st({ slot_count: 24, upcoming_slots: iso(block(17, 9, 6)) }, 13), 'Up to date');
+eq('Sat: 5h next week -> few next week', st({ slot_count: 20, upcoming_slots: iso(block(16, 9, 5)) }, 14), 'Few valid times next week');
+eq('Sun: 6h next week -> up to date', st({ slot_count: 24, upcoming_slots: iso(block(16, 9, 6)) }, 15), 'Up to date');
+// Thursday: this week; 2h is still few, 3h or more is up to date
+eq('Thu: 2h this week -> few', st({ slot_count: 8, upcoming_slots: iso(block(13, 9, 2)) }, 12), 'Few valid times this week');
+eq('Thu: 3h this week -> up to date', st({ slot_count: 12, upcoming_slots: iso(block(13, 9, 3)) }, 12), 'Up to date');
 eq('picked something, suggestions exist -> judged on valid time', st({ suggested_count: 2, ranked_count: 1, upcoming_picks: [{ start: new Date(at(10, 9)).toISOString(), minutes: 240 }] }), 'Up to date');
 
 // last update = the candidate's last change; creation time until they answer

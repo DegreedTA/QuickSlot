@@ -1,4 +1,5 @@
 import {
+  COMFORTABLE_MINUTES_NEXT_WEEK,
   MIN_MINUTES_MON_WED,
   MIN_MINUTES_NEXT_WEEK,
   MIN_MINUTES_THU,
@@ -75,7 +76,7 @@ export interface WeeklyCheck {
   /**
    * Everything required is met, but only barely: which polite request to show.
    * 'this_week' (Mon-Wed, only the 4 h), 'next_week' (Thu, only the 2 h and little next week),
-   * 'more' (Fri-Sun, only the 4 h of next week; the candidate is already on that week, so the text
+   * 'more' (Fri-Sun, less than 6 h next week; the candidate is already on that week, so the text
    * must not say "next week" or it reads as the week after).
    */
   appeal: 'this_week' | 'next_week' | 'more' | null;
@@ -105,7 +106,7 @@ export function checkWeeks(tz: string, slots: Iterable<number>, picks: Pick[], l
   let appeal: WeeklyCheck['appeal'] = null;
   if (unmet.length === 0) {
     if (current === null) {
-      if (next.have < next.need + NEAR_MINIMUM_EXTRA_MINUTES) appeal = 'more';
+      if (next.have < Math.max(next.need, COMFORTABLE_MINUTES_NEXT_WEEK)) appeal = 'more';
     } else if (current.have < current.need + NEAR_MINIMUM_EXTRA_MINUTES) {
       if (current.min === MIN_MINUTES_MON_WED) appeal = 'this_week';
       else if (next.have < next.need) appeal = 'next_week';
