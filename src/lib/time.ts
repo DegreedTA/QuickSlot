@@ -146,6 +146,13 @@ export function formatCalWeekday(c: CalDate): string {
   );
 }
 
+/** "Monday, November 16" — the full day name, for screen readers and checkbox labels. */
+export function formatCalLong(c: CalDate): string {
+  return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(c.y, c.m - 1, c.d)),
+  );
+}
+
 export function formatCalFull(c: CalDate): string {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(
     new Date(Date.UTC(c.y, c.m - 1, c.d)),

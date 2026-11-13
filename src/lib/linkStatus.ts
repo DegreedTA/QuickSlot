@@ -1,10 +1,14 @@
 import type { LinkRow, ManagerLinkData, SuggestedSlot } from './types';
 import type { Status } from '../components/ui';
-import { coveredMinutes, weekBounds, weekRequirements } from './weeklyMinimum.ts';
+import { coveredMinutes, scaleMinutes, weekBounds, weekRequirements } from './weeklyMinimum.ts';
+import { addDays, calKey } from './time.ts';
 import { COMFORTABLE_MINUTES_NEXT_WEEK, MIN_MINUTES_THU, NEAR_MINIMUM_EXTRA_MINUTES } from './statusConfig.ts';
 
 /** What the status rules need. A dashboard LinkRow already has all of it. */
-export type StatusInput = Pick<LinkRow, 'has_unseen_change' | 'slot_count' | 'ranked_count' | 'suggested_count' | 'upcoming_slots' | 'upcoming_picks'>;
+export type StatusInput = Pick<
+  LinkRow,
+  'has_unseen_change' | 'slot_count' | 'ranked_count' | 'suggested_count' | 'upcoming_slots' | 'upcoming_picks' | 'unavailable_days'
+>;
 
 /** The detail page has the full link, so build the same input from it. Opening a link marks it seen, hence no unseen change. */
 export function statusInputFromLink(d: ManagerLinkData): StatusInput {
@@ -17,6 +21,7 @@ export function statusInputFromLink(d: ManagerLinkData): StatusInput {
     suggested_count: d.suggested_slots.length,
     upcoming_slots: d.slots,
     upcoming_picks: picks,
+    unavailable_days: d.unavailable_days ?? [],
   };
 }
 
@@ -26,23 +31,33 @@ export function statusInputFromLink(d: ManagerLinkData): StatusInput {
  *  - Mon-Wed: fewer than the 4 h minimum.
  *  - Thu: fewer than 3 h (the 2 h minimum, or a little more, is still "few").
  *  - Fri-Sun: 5.5 h or less next week; 6 h or more is up to date.
+ * Days the candidate marked unavailable scale that bar down, exactly as they do on the candidate's
+ * own page, so both sides judge a week the same way. A week with no free days is never "few".
  */
-export function statusTarget(tz: string, now = Date.now()): { from: number; to: number; nextWeek: boolean; isFew: (minutes: number) => boolean } {
+export function statusTarget(
+  tz: string,
+  now = Date.now(),
+  offDays: Iterable<string> = [],
+): { from: number; to: number; nextWeek: boolean; freeDays: number; isFew: (minutes: number) => boolean } {
   const req = weekRequirements(tz, now);
   const w = req.current ?? req.next; // from Friday on there is no current week: judge the coming one
   const [from, to] = weekBounds(w.mon, tz);
   const nextWeek = req.current === null;
-  const isFew = nextWeek
-    ? (m: number) => m < COMFORTABLE_MINUTES_NEXT_WEEK
+  const off = new Set(offDays);
+  let freeDays = 0;
+  for (let d = 0; d < 5; d++) if (!off.has(calKey(addDays(w.mon, d)))) freeDays++;
+  const bar = nextWeek
+    ? COMFORTABLE_MINUTES_NEXT_WEEK
     : w.min === MIN_MINUTES_THU
-      ? (m: number) => m < w.min + NEAR_MINIMUM_EXTRA_MINUTES
-      : (m: number) => m < w.min;
-  return { from, to, nextWeek, isFew };
+      ? w.min + NEAR_MINIMUM_EXTRA_MINUTES
+      : w.min;
+  const scaled = scaleMinutes(bar, freeDays);
+  return { from, to, nextWeek, freeDays, isFew: (m: number) => freeDays > 0 && m < scaled };
 }
 
 /** Minutes of valid time in the judged week: free blocks + picks that start in the future. Overlaps count once. */
 export function validMinutes(l: StatusInput, tz: string, now = Date.now()): number {
-  const { from, to } = statusTarget(tz, now);
+  const { from, to } = statusTarget(tz, now, l.unavailable_days);
   return coveredMinutes(l.upcoming_slots.map((s) => Date.parse(s)), l.upcoming_picks.map((p) => ({ start: Date.parse(p.start), minutes: p.minutes })), from, to, now);
 }
 
@@ -56,8 +71,10 @@ export function linkStatus(l: StatusInput, tz: string, now = Date.now()): Status
   const answered = l.slot_count + l.ranked_count > 0;
   if (!answered) return 'Waiting for availability';
   // 3. answered and seen: is there enough valid time in the judged week?
+  const target = statusTarget(tz, now, l.unavailable_days);
+  // The candidate marked the whole judged week off: there is nothing to ask them for.
+  if (target.freeDays === 0) return 'Up to date';
   const mins = validMinutes(l, tz, now);
-  const target = statusTarget(tz, now);
   if (mins === 0) return target.nextWeek ? 'No valid times next week' : 'No valid times this week';
   if (target.isFew(mins)) return target.nextWeek ? 'Few valid times next week' : 'Few valid times this week';
   return 'Up to date';

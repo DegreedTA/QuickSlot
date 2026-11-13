@@ -24,6 +24,8 @@ colors:
   qs-avail-edge: "rgba(0,98,227,0.8)"
   qs-pick-bg: "#FFD6CD"
   qs-pick-edge: "rgba(255,127,100,0.9)"
+  qs-off-bg: "#EEF1F5"
+  qs-off-line: "#E2E7EE"
 typography:
   page-title:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
@@ -137,6 +139,7 @@ Text: strong `#0F1F2C`, body `#2A3742`, muted `#5A6B7B`, link `#0062E3`. Surface
 - **Availability:** bg `#C1E4F6` (Sky 55% on white), 3px inset left edge `rgba(0,98,227,0.8)`.
 - **Selected (candidate pick):** bg `#FFD6CD` (Fry Sauce 32% on white), 3px inset left edge `rgba(255,127,100,0.9)`, a Moonshot rank badge (21px circle, white 12px/700).
 - **Suggested, not picked:** Cloud with 135-degree Slate hatching at 50% opacity.
+- **Unavailable day:** 135-degree hatching in `--qs-off-bg` `#EEF1F5` with `--qs-off-line` `#E2E7EE` lines, 9px and 10px. Deliberately unlike "suggested": that one is Slate at 50% with 5px lines, and the two must never be read as the same thing.
 
 ### Status chips
 Exactly one per link. Shown as pills that are only as wide as their words, 26px tall, 13px/700, text left-aligned.
@@ -155,6 +158,8 @@ Exactly one per link. Shown as pills that are only as wide as their words, 26px 
 **The Today Is Blue Rule.** In every calendar and day-column header, today's weekday and date are True Blue.
 
 **The Picks Stay Orange Rule.** A time the candidate picked is part of their availability, but it keeps the orange "selected" look. It never turns into a blue availability block, and the recruiter cannot clear it.
+
+**The Grey Beats Blue Rule.** A day the candidate marked unavailable is Slate-muted in the day header even when it is today, so "off" wins over "The Today Is Blue Rule".
 
 **The Danger Rule.** `#C7472B` is for errors, the destructive button, and the "No valid times" chip only.
 
@@ -197,6 +202,9 @@ Shared primitives live in `src/components/ui` (CSS in `src/styles/primitives.css
 ### Calendar (shared by recruiter and candidate)
 One component, `WeekCalendar`. Mon to Fri, a 64px hour column, 12px right and bottom padding, day columns with a 1px Mist left border (the last one also a right border), hour lines Mist and half-hour lines Cloud.
 
+- **Day header:** two lines, centred, 14px top padding. The weekday is 11px/600 uppercase with `.09em` tracking; the day number alone sits under it at 26px/400 in a 46px line box. Today is True Blue in both lines at 600 weight, with **no circle and no fill**. An unavailable day is `--text-muted` in both lines, and that wins over today's blue. The full date ("Monday, November 16") is there for screen readers. Mobile: 10px weekday, 20px number in a 36px box.
+- **Unavailable days** (candidate only): a row of checkboxes under the day header, on the sunken background, carrying the header's bottom border. One per day, labelled "Unavailable", plus an unlabelled one over the hour column that marks the whole week (`aria-label` "Mark the whole week unavailable") and goes to a dash when only some days are on. The box is 16x16, 4px radius, a 1.5px Slate border, filled Slate with a white Phosphor check when on; **never blue** (blue means "free") and never a pill or a card around the label. Keyboard focus is a 3px Deep Blue ring on the box. On mobile the word "Unavailable" is left to screen readers and only the box shows.
+- **An unavailable day** is drawn as a hatched overlay over the whole column, under the slots so the recruiter's suggestions stay on top and clickable, with a white pill badge ("Unavailable" plus a Phosphor `Prohibit` icon) 22px down. The badge appears only when the band is at least one hour tall, and drops to the icon alone on mobile. It fades in over 220ms. Because the dates belong to the candidate's zone, a recruiter in another zone can see the band cover part of one column or parts of two: that is correct, not a bug. **The badge is the one piece of text allowed over a calendar column** — it is an overlay, not a slot, so the "no text inside calendar slots" rule still holds for slots.
 - **Scale:** `src/lib/calendarGeometry.ts` is the only place it lives. 15 min = 14px (1 h = 56px, the 6 AM to 9 PM range is 840px); touch screens use 24px rows. Slot top = minutes x 56/60; slot height = minutes x 56/60 - 1, so grid lines and back-to-back slots stay visible. Slots are inset 1px with a 6px radius and contain no text except the rank badge.
 - **Availability** is drawn as continuous blocks; suggestions are always separate blocks.
 - **Recruiter:** drag to suggest (a dashed True Blue preview), hover or focus a slot for its exact time, click a suggestion that nobody picked to remove it.
@@ -217,6 +225,6 @@ Short and functional. Buttons nudge on press. When the time zone changes, the ca
 ### Don't:
 - **Don't** add a dark theme or a sidebar.
 - **Don't** add a second action color or restyle a button locally.
-- **Don't** put text inside calendar slots or merge back-to-back suggestions.
+- **Don't** put text inside calendar slots or merge back-to-back suggestions. (The "Unavailable" badge is an overlay over the column, not a slot.)
 - **Don't** give text fields an outer outline on focus.
 - **Don't** use `color-mix` for the calendar marks; use the precomputed hex tokens.

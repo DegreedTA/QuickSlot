@@ -3,7 +3,7 @@
 A rebuild of the interview-availability tool that was originally made in Lovable. A recruiter creates a private link, sends it to a candidate, and the candidate marks when they are free. The recruiter reads it in their own time zone.
 
 - **Recruiter side** (`/`): sign in with a shared team passcode, create links (one or a batch of up to 25), give each a private label, see which links changed since you last looked, suggest specific interview times, copy a day-by-day summary for email.
-- **Candidate side** (`/<code>`): no login. Marks free time over the next 30 days (Monday to Friday only), types a city or time zone, ranks any times the recruiter suggested. Saves automatically. Can come back to the same link. Anything less than 3 hours from now is greyed out.
+- **Candidate side** (`/<code>`): no login. Marks free time over the next 30 days (Monday to Friday only), types a city or time zone, ranks any times the recruiter suggested, and can tick whole days (or a whole week) as **Unavailable**. Saves automatically. Can come back to the same link. Anything less than 3 hours from now is greyed out.
 - **Recruiter link view** (`/<code>/recruiter`): the same candidate, read-only, in the recruiter's time zone.
 
 Links expire after 90 days, or sooner if a recruiter deactivates them. The candidate side stores only availability and time zone.
@@ -64,6 +64,7 @@ The Vercel and Supabase accounts are owned by the Talent Acquisition team accoun
 - **Clear all** removes every suggested time on the link (or the whole batch).
 - Suggested times that have already started are deleted automatically. The database does this whenever a link or the dashboard is opened, and every 15 minutes on its own if the `pg_cron` extension is on (Supabase: Database > Extensions > pg_cron). `schema.sql` tries to turn it on and schedule the job; if it cannot, nothing breaks.
 - If the database was set up before this change, run the whole of `supabase/schema.sql` again in the SQL Editor. It is safe to re-run.
+- **Run `supabase/migrations/2026-11-13_unavailable_days.sql` in the SQL Editor BEFORE the site that uses it is deployed.** Order matters here. The new `p_unavailable_days` argument has a default, so running the migration first leaves the site that is already live working exactly as it did; deploying the site first would instead break every candidate's save until the migration lands. Running the whole of `supabase/schema.sql` again does the same thing and is also safe.
 - **Run `supabase/schema.sql` again before (or right when) this version goes live.** Recruiter sign-in now uses session tokens (`manager_login`), which the old database does not have. Until it is re-run, signing in fails. Re-running keeps all links and the passcode; everyone just signs in again once.
 
 ## Time zones
@@ -98,7 +99,7 @@ Things to know:
 | Plain time zone dropdown | Type a city or zone ("nyc", "brasil", "pst", "gmt-3"); recruiters can suggest times in any zone and candidates see them converted |
 | Slots could be picked at any time | Nothing sooner than 3 hours from now can be picked (set in `src/lib/time.ts`). Availability and suggested times snap to 15 minutes |
 | Plain white form look | New look: the Degreed design system (True Blue pills, Inter, white cards), sky-blue availability and orange picks, tabular numbers. See `DESIGN.md` |
-| Any amount of availability accepted | Weekly minimums for candidates: 4 h this week Mon-Wed, 2 h this week on Thu, and 4 h next week on Fri-Sun (the current week is not asked for from Friday on). Candidates who offer only the minimum see a polite request for more times: "this week" Mon-Wed, "next week" Thu, and a plain "Consider marking more times" Fri-Sun, when they are already on the next week's page (set in `src/lib/statusConfig.ts`) |
+| Any amount of availability accepted | Weekly minimums for candidates: 4 h this week Mon-Wed, 2 h this week on Thu, and 4 h next week on Fri-Sun (the current week is not asked for from Friday on). Candidates who offer only the minimum see a polite request for more times: "this week" Mon-Wed, "next week" Thu, and a plain "Consider marking more times" Fri-Sun, when they are already on the next week's page (set in `src/lib/statusConfig.ts`). Days the candidate ticks as unavailable scale those minimums down in proportion — 4 h over three free days is 2.5 h — on the candidate's page and in the dashboard status alike, and a week with no free days left asks for nothing |
 
 ## Folder guide
 

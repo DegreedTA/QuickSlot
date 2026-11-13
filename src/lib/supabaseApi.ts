@@ -46,8 +46,13 @@ export function createSupabaseApi(url: string, anonKey: string): Api {
   return {
     mode: 'supabase',
     getLink: (token) => rpc<CandidateResult>('get_link', { p_token: token }),
-    setAvailability: (token, slots, timezone) =>
-      rpc<string>('set_availability', { p_token: token, p_slots: slots, p_timezone: timezone }),
+    setAvailability: (token, slots, timezone, unavailableDays) =>
+      rpc<string>('set_availability', {
+        p_token: token,
+        p_slots: slots,
+        p_timezone: timezone,
+        p_unavailable_days: unavailableDays,
+      }),
     setRanked: (token, choices) => rpc<string>('set_ranked_choices', { p_token: token, p_choices: choices }),
 
     managerLogin: async (passcode) => {

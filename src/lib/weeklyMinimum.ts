@@ -5,7 +5,16 @@ import {
   MIN_MINUTES_THU,
   NEAR_MINIMUM_EXTRA_MINUTES,
 } from './statusConfig.ts';
-import { ROWS, SLOT_MS, addDays, mondayOf, slotInstantFor, todayIn, zonedToUtc, type CalDate } from './time.ts';
+import { ROWS, SLOT_MS, addDays, calKey, mondayOf, slotInstantFor, todayIn, zonedToUtc, type CalDate } from './time.ts';
+
+/**
+ * A week's minimum, scaled down by the days the candidate marked unavailable, and rounded up to a
+ * whole 15 minute row. 4 h over 3 free days is 2.5 h; over 4 days, 3.25 h. No free days: nothing.
+ */
+export function scaleMinutes(minutes: number, freeDays: number): number {
+  if (freeDays <= 0) return 0;
+  return Math.ceil((minutes * freeDays) / 5 / 15) * 15;
+}
 
 export interface Pick {
   start: number;
@@ -66,6 +75,8 @@ export interface WeekStatus {
   need: number;
   have: number;
   required: boolean;
+  /** Days Monday to Friday that are not marked unavailable. 0 means nothing is asked of this week. */
+  freeDays: number;
 }
 
 export interface WeeklyCheck {
@@ -85,31 +96,53 @@ export interface WeeklyCheck {
 /**
  * Where the candidate stands against the weekly minimums.
  * `leadMs` is how soon a block may start (the app's notice period), so a requirement is never
- * higher than the time that can still be marked.
+ * higher than the time that can still be marked. `offDays` are whole days the candidate marked
+ * unavailable ('YYYY-MM-DD' in `tz`): they offer no room and scale the minimum down.
  */
-export function checkWeeks(tz: string, slots: Iterable<number>, picks: Pick[], leadMs: number, now = Date.now()): WeeklyCheck {
+export function checkWeeks(
+  tz: string,
+  slots: Iterable<number>,
+  picks: Pick[],
+  leadMs: number,
+  now = Date.now(),
+  offDays: Iterable<string> = [],
+): WeeklyCheck {
   const req = weekRequirements(tz, now);
   const list = [...slots];
+  const off = new Set(offDays);
   const status = (w: { mon: CalDate; min: number }, required: boolean): WeekStatus => {
     const [from, to] = weekBounds(w.mon, tz);
     let room = 0; // minutes that can still be marked in this week
+    let freeDays = 0;
     for (let d = 0; d < 5; d++) {
-      for (let r = 0; r < ROWS; r++) if (slotInstantFor(addDays(w.mon, d), r, tz) >= now + leadMs) room += 15;
+      const day = addDays(w.mon, d);
+      if (off.has(calKey(day))) continue; // an unavailable day offers no room and is not counted
+      freeDays++;
+      for (let r = 0; r < ROWS; r++) if (slotInstantFor(day, r, tz) >= now + leadMs) room += 15;
     }
-    return { mon: w.mon, min: w.min, need: Math.min(w.min, room), have: coveredMinutes(list, picks, from, to, now), required };
+    return {
+      mon: w.mon,
+      min: w.min, // the rule's own figure; `need` is what is actually asked for
+      need: Math.min(scaleMinutes(w.min, freeDays), room),
+      have: coveredMinutes(list, picks, from, to, now),
+      required,
+      freeDays,
+    };
   };
   const current = req.current ? status(req.current, true) : null;
   const next = status(req.next, req.next.required);
   const unmet: ('current' | 'next')[] = [];
   if (current && current.have < current.need) unmet.push('current');
   if (next.required && next.have < next.need) unmet.push('next');
+  // A week with no free days is never unmet above and is never nudged here.
   let appeal: WeeklyCheck['appeal'] = null;
   if (unmet.length === 0) {
     if (current === null) {
-      if (next.have < Math.max(next.need, COMFORTABLE_MINUTES_NEXT_WEEK)) appeal = 'more';
-    } else if (current.have < current.need + NEAR_MINIMUM_EXTRA_MINUTES) {
+      if (next.freeDays > 0 && next.have < Math.max(next.need, scaleMinutes(COMFORTABLE_MINUTES_NEXT_WEEK, next.freeDays)))
+        appeal = 'more';
+    } else if (current.freeDays > 0 && current.have < current.need + NEAR_MINIMUM_EXTRA_MINUTES) {
       if (current.min === MIN_MINUTES_MON_WED) appeal = 'this_week';
-      else if (next.have < next.need) appeal = 'next_week';
+      else if (next.freeDays > 0 && next.have < next.need) appeal = 'next_week';
     }
   }
   return { current, next, unmet, appeal };
