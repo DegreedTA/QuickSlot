@@ -418,11 +418,20 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
           {check.appeal && (
             <div className="week-notice is-appeal" role="status">
               <span>
-                <strong>Consider marking more times next week.</strong> More options help us find a time that works for you.
+                <strong>
+                  {check.appeal === 'this_week'
+                    ? 'Consider marking more times this week.'
+                    : check.appeal === 'next_week'
+                      ? 'Consider marking more times next week.'
+                      : 'Consider marking more times.'}
+                </strong>{' '}
+                More options help us find a time that works for you.
               </span>
-              <Button size="sm" variant="ghost" onClick={() => setWeekIdx(Math.max(0, weekIndex(check.next.mon)))}>
-                Show next week
-              </Button>
+              {check.appeal === 'next_week' && (
+                <Button size="sm" variant="ghost" onClick={() => setWeekIdx(Math.max(0, weekIndex(check.next.mon)))}>
+                  Show next week
+                </Button>
+              )}
             </div>
           )}
 
