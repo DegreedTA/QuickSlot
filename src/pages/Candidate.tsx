@@ -135,7 +135,6 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   const [save, setSave] = useState<Save>(() => (returning || data.ranked_choices.length ? { kind: 'saved', at: Date.parse(data.updated_at) } : { kind: 'idle' }));
   const [paint, setPaint] = useState(false);
   const [done, setDone] = useState(false);
-  const [triedDone, setTriedDone] = useState(false);
 
   const latest = useRef({ slots, tz, ranked });
   latest.current = { slots, tz, ranked };
@@ -294,12 +293,6 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
     [tz, slots, pickedOnGrid, tick],
   );
   const weekIndex = (mon: CalDate) => weeks.findIndex((w) => calKey(w) === calKey(mon));
-  const unmetText = check.unmet
-    .map((w) => {
-      const x = w === 'current' ? check.current! : check.next;
-      return `${fmtH(x.need)} ${w === 'current' ? 'this week' : 'next week'}`;
-    })
-    .join(' and ');
   const unmetDetail = check.unmet
     .map((w) => {
       const x = w === 'current' ? check.current! : check.next;
@@ -311,12 +304,7 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   const stepBadge = (n: number) => !returning && <span className="step-badge" aria-hidden="true">{n}</span>;
 
   function finish() {
-    if (check.unmet.length > 0) {
-      setTriedDone(true); // keep the page as it is and say what is missing
-      return;
-    }
-    setTriedDone(false);
-    flushAll();
+    flushAll(); // the weekly minimums only nudge; someone may truly be unavailable, so they never block
     setDone(true);
   }
 
@@ -408,7 +396,7 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
           {check.unmet.length > 0 && (
             <div className="week-notice is-need" role="status">
               <span>
-                <strong>Please mark at least {unmetDetail}.</strong>
+                <strong>Please try to mark at least {unmetDetail}.</strong>
               </span>
               <Button size="sm" variant="secondary" onClick={() => setWeekIdx(Math.max(0, weekIndex((check.unmet[0] === 'current' ? check.current! : check.next).mon)))}>
                 Show {check.unmet[0] === 'current' ? 'this' : 'next'} week
@@ -448,10 +436,12 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
                 <i className="sw sw-free" aria-hidden="true" />
                 Your availability
               </span>
-              <span>
-                <i className="sw sw-picked" aria-hidden="true" />
-                Your picks
-              </span>
+              {suggestions.length > 0 && (
+                <span>
+                  <i className="sw sw-picked" aria-hidden="true" />
+                  Your picks
+                </span>
+              )}
               <Button size="sm" variant="secondary" className="paint-toggle" aria-pressed={paint} disabled={locked} onClick={() => setPaint(!paint)}>
                 <HandPointing size={16} aria-hidden />
                 Draw {paint ? 'on' : 'off'}
@@ -484,7 +474,6 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
           expires={expiresLabel}
           picks={suggestions.length > 0 ? pickedOnGrid.length : null}
           slotCount={slots.size}
-          blocked={triedDone && check.unmet.length > 0 ? `Please mark at least ${unmetText} to finish.` : null}
           onRetry={flushAll}
           onDone={finish}
           onKeepEditing={() => setDone(false)}
@@ -506,7 +495,6 @@ function SaveBar({
   expires,
   picks,
   slotCount,
-  blocked,
   onRetry,
   onDone,
   onKeepEditing,
@@ -517,7 +505,6 @@ function SaveBar({
   expires: string;
   picks: number | null;
   slotCount: number;
-  blocked: string | null;
   onRetry: () => void;
   onDone: () => void;
   onKeepEditing: () => void;
@@ -559,11 +546,6 @@ function SaveBar({
           )}
         </span>
       </div>
-      {blocked && (
-        <p className="save-block" role="alert">
-          {blocked}
-        </p>
-      )}
       <Button size="lg" onClick={onDone}>
         I'm done <span aria-hidden="true">→</span>
       </Button>

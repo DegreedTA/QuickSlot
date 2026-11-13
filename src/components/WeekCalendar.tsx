@@ -340,10 +340,12 @@ export function WeekCalendar({
               const when = span(from, to, tz);
               const box = { top: topOf(r * 15), height: heightOf(len * 15) };
               if (mode === 'edit') {
+                // Pointer handling on the calendar body works from coordinates, so the block can take the
+                // pointer (for the time-range tooltip) without getting in the way of painting.
                 return (
-                  <div key={`f${r}`} className="rc-slot-wrap rc-static" style={box} aria-hidden="true">
-                    <div className="rc-slot rc-free" />
-                  </div>
+                  <Tooltip key={`f${r}`} label={when} className="rc-slot-wrap" style={box}>
+                    <div className="rc-slot rc-free" aria-hidden="true" />
+                  </Tooltip>
                 );
               }
               return (
@@ -360,11 +362,20 @@ export function WeekCalendar({
               const maxMin = ROWS * 15 - r * 15;
               const box = { top: topOf(r * 15), height: heightOf(Math.min(s.minutes, maxMin)) };
               const badge = picked && <span className="rc-rank">{rank}</span>;
-              if (mode !== 'suggest') {
+              if (mode === 'view') {
                 return (
                   <div key={s.start} className="rc-slot-wrap rc-static is-above" style={box} aria-hidden="true">
                     <div className={`rc-slot ${picked ? 'rc-picked' : 'rc-suggested'}`}>{badge}</div>
                   </div>
+                );
+              }
+              if (mode === 'edit') {
+                return (
+                  <Tooltip key={s.start} label={when} className="rc-slot-wrap is-above" style={box}>
+                    <div className={`rc-slot ${picked ? 'rc-picked' : 'rc-suggested'}`} aria-hidden="true">
+                      {badge}
+                    </div>
+                  </Tooltip>
                 );
               }
               return (
