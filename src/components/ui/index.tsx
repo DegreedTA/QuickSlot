@@ -125,6 +125,8 @@ export const STATUSES = {
   'Up to date': 'ok',
   'Few valid times this week': 'few',
   'No valid times this week': 'none',
+  'Few valid times next week': 'few',
+  'No valid times next week': 'none',
 } as const;
 export type Status = keyof typeof STATUSES;
 export function StatusChip({ status }: { status: Status }) {

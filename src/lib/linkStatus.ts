@@ -19,12 +19,12 @@ export function statusInputFromLink(d: ManagerLinkData): StatusInput {
   };
 }
 
-/** The week the dashboard judges, and the bar for "few": this week Monday to Friday, the coming week on weekends. */
-export function statusTarget(tz: string, now = Date.now()): { from: number; to: number; min: number } {
+/** The week the dashboard judges, and the bar for "few": this week Monday to Thursday, the coming week from Friday on (same as the candidate page). */
+export function statusTarget(tz: string, now = Date.now()): { from: number; to: number; min: number; nextWeek: boolean } {
   const req = weekRequirements(tz, now);
-  const w = req.current ?? req.next; // on Saturday and Sunday there is no current week: judge the coming one
+  const w = req.current ?? req.next; // from Friday on there is no current week: judge the coming one
   const [from, to] = weekBounds(w.mon, tz);
-  return { from, to, min: w.min };
+  return { from, to, min: w.min, nextWeek: req.current === null };
 }
 
 /** Minutes of valid time in the judged week: free blocks + picks that start in the future. Overlaps count once. */
@@ -44,8 +44,9 @@ export function linkStatus(l: StatusInput, tz: string, now = Date.now()): Status
   if (!answered) return 'Waiting for availability';
   // 3. answered and seen: is there enough valid time in the judged week?
   const mins = validMinutes(l, tz, now);
-  if (mins === 0) return 'No valid times this week';
-  if (mins < statusTarget(tz, now).min) return 'Few valid times this week';
+  const target = statusTarget(tz, now);
+  if (mins === 0) return target.nextWeek ? 'No valid times next week' : 'No valid times this week';
+  if (mins < target.min) return target.nextWeek ? 'Few valid times next week' : 'Few valid times this week';
   return 'Up to date';
 }
 

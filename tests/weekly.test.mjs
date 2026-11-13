@@ -67,6 +67,10 @@ eq('answered, 4h this week -> up to date', st({ slot_count: 16, upcoming_slots: 
 eq('answered, 3h on a Monday -> few', st({ slot_count: 12, upcoming_slots: iso(block(10, 9, 3)) }), 'Few valid times this week');
 eq('answered, 2h on a Thursday -> up to date (bar is 2h)', st({ slot_count: 8, upcoming_slots: iso(block(13, 9, 2)) }, 12), 'Up to date');
 eq('answered, 0 valid -> none', st({ slot_count: 8, upcoming_slots: iso(block(17, 9, 2)) }), 'No valid times this week');
+// from Friday on the dashboard judges next week, and says so
+eq('Fri: only Friday times -> none next week', st({ slot_count: 16, upcoming_slots: iso(block(13, 18, 4)) }, 13), 'No valid times next week');
+eq('Fri: 3h next week -> few next week', st({ slot_count: 12, upcoming_slots: iso(block(17, 9, 3)) }, 13), 'Few valid times next week');
+eq('Fri: 4h next week -> up to date', st({ slot_count: 16, upcoming_slots: iso(block(17, 9, 4)) }, 13), 'Up to date');
 eq('picked something, suggestions exist -> judged on valid time', st({ suggested_count: 2, ranked_count: 1, upcoming_picks: [{ start: new Date(at(10, 9)).toISOString(), minutes: 240 }] }), 'Up to date');
 
 // last update = the candidate's last change; creation time until they answer
