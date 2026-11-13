@@ -5,15 +5,27 @@ import {
   MIN_MINUTES_THU,
   NEAR_MINIMUM_EXTRA_MINUTES,
 } from './statusConfig.ts';
-import { ROWS, SLOT_MS, addDays, calKey, mondayOf, slotInstantFor, todayIn, zonedToUtc, type CalDate } from './time.ts';
+import {
+  ROWS,
+  SLOT_MS,
+  addDays,
+  calDiffDays,
+  calKey,
+  mondayOf,
+  slotInstantFor,
+  todayIn,
+  zonedToUtc,
+  type CalDate,
+} from './time.ts';
 
 /**
- * A week's minimum, scaled down by the days the candidate marked unavailable, and rounded up to a
- * whole 15 minute row. 4 h over 3 free days is 2.5 h; over 4 days, 3.25 h. No free days: nothing.
+ * A week's minimum, scaled down by the days the candidate marked unavailable, then rounded UP to a
+ * whole hour so the ask is always a round number. From the 4 h minimum: 2 free days ask 2 h, 3 days
+ * 3 h, 4 days 4 h (a single day off does not lower the bar), 5 days 4 h. No free days: nothing.
  */
 export function scaleMinutes(minutes: number, freeDays: number): number {
   if (freeDays <= 0) return 0;
-  return Math.ceil((minutes * freeDays) / 5 / 15) * 15;
+  return Math.ceil((minutes * freeDays) / 5 / 60) * 60;
 }
 
 export interface Pick {
@@ -77,13 +89,20 @@ export interface WeekStatus {
   required: boolean;
   /** Days Monday to Friday that are not marked unavailable. 0 means nothing is asked of this week. */
   freeDays: number;
+  /** Where the week sits relative to today, for the wording of the notice. */
+  when: 'this' | 'next' | 'later';
 }
 
 export interface WeeklyCheck {
   current: WeekStatus | null;
   next: WeekStatus;
-  /** Weeks that are required and not yet met. Empty = the candidate may finish. */
-  unmet: ('current' | 'next')[];
+  /**
+   * The week the minimum rolled to because the week normally asked for is entirely unavailable.
+   * Null when nothing rolled.
+   */
+  rolled: WeekStatus | null;
+  /** Weeks that are required and not yet met. Empty = nothing more is being asked for. */
+  unmet: WeekStatus[];
   /**
    * Everything required is met, but only barely: which polite request to show.
    * 'this_week' (Mon-Wed, only the 4 h), 'next_week' (Thu, only the 2 h and little next week),
@@ -110,6 +129,7 @@ export function checkWeeks(
   const req = weekRequirements(tz, now);
   const list = [...slots];
   const off = new Set(offDays);
+  const thisMon = mondayOf(todayIn(tz, now));
   const status = (w: { mon: CalDate; min: number }, required: boolean): WeekStatus => {
     const [from, to] = weekBounds(w.mon, tz);
     let room = 0; // minutes that can still be marked in this week
@@ -120,6 +140,7 @@ export function checkWeeks(
       freeDays++;
       for (let r = 0; r < ROWS; r++) if (slotInstantFor(day, r, tz) >= now + leadMs) room += 15;
     }
+    const weeksOut = Math.round(calDiffDays(thisMon, w.mon) / 7);
     return {
       mon: w.mon,
       min: w.min, // the rule's own figure; `need` is what is actually asked for
@@ -127,23 +148,46 @@ export function checkWeeks(
       have: coveredMinutes(list, picks, from, to, now),
       required,
       freeDays,
+      when: weeksOut <= 0 ? 'this' : weeksOut === 1 ? 'next' : 'later',
     };
   };
   const current = req.current ? status(req.current, true) : null;
   const next = status(req.next, req.next.required);
-  const unmet: ('current' | 'next')[] = [];
-  if (current && current.have < current.need) unmet.push('current');
-  if (next.required && next.have < next.need) unmet.push('next');
-  // A week with no free days is never unmet above and is never nudged here.
+
+  // A week with no free days can be asked for nothing, but the candidate still has to offer time
+  // somewhere: the minimum rolls forward to the first later week that has a day left.
+  const target = current ?? next;
+  let rolled: WeekStatus | null = null;
+  if (target.freeDays === 0) {
+    for (let k = 1, mon = addDays(target.mon, 7); k <= 4; k++, mon = addDays(mon, 7)) {
+      const st = status({ mon, min: MIN_MINUTES_NEXT_WEEK }, true);
+      if (st.freeDays > 0) {
+        rolled = st;
+        break;
+      }
+    }
+  }
+
+  const unmet: WeekStatus[] = [];
+  if (rolled) {
+    if (rolled.have < rolled.need) unmet.push(rolled);
+  } else {
+    if (current && current.have < current.need) unmet.push(current);
+    if (next.required && next.have < next.need) unmet.push(next);
+  }
+
+  // Nothing is nudged while something is still required, and a week with no free days is never nudged.
   let appeal: WeeklyCheck['appeal'] = null;
   if (unmet.length === 0) {
-    if (current === null) {
-      if (next.freeDays > 0 && next.have < Math.max(next.need, scaleMinutes(COMFORTABLE_MINUTES_NEXT_WEEK, next.freeDays)))
-        appeal = 'more';
+    const comfort = (w: WeekStatus) => Math.max(w.need, scaleMinutes(COMFORTABLE_MINUTES_NEXT_WEEK, w.freeDays));
+    if (rolled) {
+      if (rolled.have < comfort(rolled)) appeal = 'more';
+    } else if (current === null) {
+      if (next.freeDays > 0 && next.have < comfort(next)) appeal = 'more';
     } else if (current.freeDays > 0 && current.have < current.need + NEAR_MINIMUM_EXTRA_MINUTES) {
       if (current.min === MIN_MINUTES_MON_WED) appeal = 'this_week';
       else if (next.freeDays > 0 && next.have < next.need) appeal = 'next_week';
     }
   }
-  return { current, next, unmet, appeal };
+  return { current, next, rolled, unmet, appeal };
 }

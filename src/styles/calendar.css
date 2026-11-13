@@ -297,9 +297,6 @@
   color: var(--text-strong);
   white-space: nowrap;
 }
-.sw-off {
-  background: repeating-linear-gradient(135deg, var(--qs-off-bg) 0 9px, var(--qs-off-line) 9px 10px);
-}
 .ds-tip-wrap.rc-slot-wrap {
   position: absolute;
   left: 1px;

@@ -337,12 +337,12 @@
   font-weight: 700;
 }
 .week-notice.is-need {
-  background: #e6f0fd;
-  color: #0f1f2c;
-}
-.week-notice.is-appeal {
   background: rgba(254, 209, 65, 0.28);
   color: #5c4300;
+}
+.week-notice.is-appeal {
+  background: #e6f0fd;
+  color: #0f1f2c;
 }
 .pick-day.is-today h3 {
   color: #0062e3;

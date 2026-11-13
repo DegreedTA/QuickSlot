@@ -29,7 +29,7 @@ import { WeekCalendar, type Suggestion } from '../components/WeekCalendar';
 import { ZoneCombobox } from '../components/ZoneCombobox';
 import { Button, Card, NavArrow } from '../components/ui';
 import { useFlashOnChange } from '../lib/useFlash';
-import { checkWeeks } from '../lib/weeklyMinimum';
+import { checkWeeks, type WeekStatus } from '../lib/weeklyMinimum';
 
 type Load = { kind: 'loading' } | { kind: 'failed' } | { kind: 'expired' } | { kind: 'notfound' } | { kind: 'ok'; data: CandidateLinkData };
 
@@ -345,12 +345,9 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   const check = painting ? frozenCheck.current : liveCheck;
 
   const weekIndex = (mon: CalDate) => weeks.findIndex((w) => calKey(w) === calKey(mon));
-  const unmetDetail = check.unmet
-    .map((w) => {
-      const x = w === 'current' ? check.current! : check.next;
-      return `${fmtH(x.need)} ${w === 'current' ? 'this week' : 'next week'} (${fmtH(x.have)} so far)`;
-    })
-    .join(' and ');
+  // A week the minimum rolled to can be further out than next week, so name it by its dates.
+  const weekName = (w: WeekStatus) => (w.when === 'this' ? 'this week' : w.when === 'next' ? 'next week' : `in ${weekLabel(w.mon)}`);
+  const unmetDetail = check.unmet.map((w) => `${fmtH(w.need)} ${weekName(w)} (${fmtH(w.have)} so far)`).join(' and ');
   const picksFlash = useFlashOnChange<HTMLDivElement>(tz);
   const calFlash = useFlashOnChange<HTMLDivElement>(tz);
   const stepBadge = (n: number) => !returning && <span className="step-badge" aria-hidden="true">{n}</span>;
@@ -450,8 +447,8 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
               <span>
                 <strong>Please try to mark at least {unmetDetail}.</strong>
               </span>
-              <Button size="sm" variant="secondary" onClick={() => setWeekIdx(Math.max(0, weekIndex((check.unmet[0] === 'current' ? check.current! : check.next).mon)))}>
-                Show {check.unmet[0] === 'current' ? 'this' : 'next'} week
+              <Button size="sm" variant="secondary" onClick={() => setWeekIdx(Math.max(0, weekIndex(check.unmet[0].mon)))}>
+                Show {check.unmet[0].when === 'this' ? 'this' : check.unmet[0].when === 'next' ? 'next' : 'that'} week
               </Button>
             </div>
           )}
@@ -470,6 +467,11 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
               {check.appeal === 'next_week' && (
                 <Button size="sm" variant="ghost" onClick={() => setWeekIdx(Math.max(0, weekIndex(check.next.mon)))}>
                   Show next week
+                </Button>
+              )}
+              {check.appeal === 'more' && check.rolled && (
+                <Button size="sm" variant="ghost" onClick={() => setWeekIdx(Math.max(0, weekIndex(check.rolled!.mon)))}>
+                  Show that week
                 </Button>
               )}
             </div>

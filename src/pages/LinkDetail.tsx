@@ -431,10 +431,6 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
               <i className="sw sw-suggested" aria-hidden="true" />
               Suggested times
             </span>
-            <span>
-              <i className="sw sw-off" aria-hidden="true" />
-              Unavailable
-            </span>
             {!expired && <strong className="legend-hint">Drag on the calendar to suggest a time</strong>}
           </div>
 
