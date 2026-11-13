@@ -83,12 +83,13 @@ export interface Api {
   getLink(token: string): Promise<CandidateResult>;
   setAvailability(token: string, slots: string[], timezone: string): Promise<string>;
   setRanked(token: string, choices: string[]): Promise<string>;
-  // recruiter (every call carries the shared passcode)
-  managerCheck(passcode: string): Promise<void>;
-  managerOverview(passcode: string): Promise<Overview>;
-  managerCreate(passcode: string, count: number, labels: string[]): Promise<CreatedLinks>;
-  managerGetLink(passcode: string, token: string, markSeen: boolean): Promise<ManagerLinkResult>;
-  managerSetLabel(passcode: string, token: string, label: string): Promise<void>;
-  managerSetSuggestions(passcode: string, tokens: string[], slots: SuggestedSlot[], timezone: string): Promise<number>;
-  managerDeactivate(passcode: string, token: string, wholeBatch: boolean): Promise<number>;
+  // recruiter: sign in once with the shared passcode, then every call carries the session token
+  managerLogin(passcode: string): Promise<string>;
+  managerLogout(session: string): Promise<void>;
+  managerOverview(session: string): Promise<Overview>;
+  managerCreate(session: string, count: number, labels: string[]): Promise<CreatedLinks>;
+  managerGetLink(session: string, token: string, markSeen: boolean): Promise<ManagerLinkResult>;
+  managerSetLabel(session: string, token: string, label: string): Promise<void>;
+  managerSetSuggestions(session: string, tokens: string[], slots: SuggestedSlot[], timezone: string): Promise<number>;
+  managerDeactivate(session: string, token: string, wholeBatch: boolean): Promise<number>;
 }

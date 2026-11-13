@@ -77,6 +77,7 @@ The Vercel and Supabase accounts are owned by the Talent Acquisition team accoun
 - **Clear all** removes every suggested time on the link (or the whole batch).
 - Suggested times that have already started are deleted automatically. The database does this whenever a link or the dashboard is opened, and every 15 minutes on its own if the `pg_cron` extension is on (Supabase: Database > Extensions > pg_cron). `schema.sql` tries to turn it on and schedule the job; if it cannot, nothing breaks.
 - If the database was set up before this change, run the whole of `supabase/schema.sql` again in the SQL Editor. It is safe to re-run.
+- **Run `supabase/schema.sql` again before (or right when) this version goes live.** Recruiter sign-in now uses session tokens (`manager_login`), which the old database does not have. Until it is re-run, signing in fails. Re-running keeps all links and the passcode; everyone just signs in again once.
 
 ## Time zones
 
@@ -88,9 +89,10 @@ The Vercel and Supabase accounts are owned by the Talent Acquisition team accoun
 
 - The tables are closed to the public. The website can only call named functions.
 - Candidates need the secret 16-character code. Codes are random and not guessable.
-- Recruiter functions need the passcode on every call. After 20 wrong attempts in 10 minutes, all recruiter sign-ins are locked for 10 minutes (this is shared, so a stranger guessing can lock your team out briefly).
+- Recruiters sign in once with the shared passcode. The database checks it and hands back a random session token; every other recruiter function needs that token. After 20 wrong passcodes in 10 minutes, all recruiter sign-ins are locked for 10 minutes (this is shared, so a stranger guessing can lock your team out briefly). Sessions that are already signed in keep working during a lockout.
 - Candidates never receive the private label.
-- After signing in, the browser remembers the passcode for 30 days, so recruiters are not asked every time. "Sign out" forgets it right away, and it is also dropped if the passcode is changed. Because it is stored in the browser, only sign in on your own computer.
+- The passcode itself is never saved in the browser or in the database (only a hash of it). The browser keeps the session token for up to 30 days, and every time the tool is used the 30 days start over, so people who use it regularly are not asked again. The database stores only a hash of the token.
+- "Sign out" deletes the session in the database straight away. Changing the passcode (`set_manager_passcode`) signs everyone out. Anyone who can use the computer or run a script in the page can still use the token until it expires or someone signs out, so only sign in on your own computer.
 
 Things to know:
 
