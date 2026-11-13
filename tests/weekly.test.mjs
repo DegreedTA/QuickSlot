@@ -12,8 +12,8 @@ const LEAD = 3 * 3600e3;
 const r = (d, h = 12) => W.weekRequirements(TZ, at(d, h));
 eq('Mon: this week 4h, next week optional', [r(9).current.min, r(9).next.required], [240, false]);
 eq('Wed: this week 4h', r(11).current.min, 240);
-eq('Thu: this week 2h, next week optional', [r(12).current.min, r(12).next.required], [120, false]);
-eq('Fri: this week 2h, next week required', [r(13).current.min, r(13).next.required], [120, true]);
+eq('Thu: this week 4h, next week optional', [r(12).current.min, r(12).next.required], [240, false]);
+eq('Fri: no current week, next week 4h required', [r(13).current, r(13).next.min, r(13).next.required], [null, 240, true]);
 eq('Sat: no current week, next week 4h required', [r(14).current, r(14).next.min, r(14).next.required, r(14).next.mon], [null, 240, true, { y: 2026, m: 11, d: 16 }]);
 eq('Sun: same as Sat', [r(15).current, r(15).next.required], [null, true]);
 
@@ -29,21 +29,27 @@ eq('Mon 4h -> nothing unmet', check(9, block(10, 9, 4)).unmet, []);
 eq('Mon exactly 4h, next week empty -> appeal', check(9, block(10, 9, 4)).appeal, true);
 eq('Mon 6h, next week empty -> no appeal', check(9, block(10, 9, 6)).appeal, false);
 eq('Mon 4h + 4h next week -> no appeal', check(9, [...block(10, 9, 4), ...block(17, 9, 4)]).appeal, false);
-// Thursday: 2h is enough this week, appeal for next week
-eq('Thu 2h -> nothing unmet', check(12, block(13, 9, 2)).unmet, []);
-eq('Thu 2h, next week 3h -> appeal', check(12, [...block(13, 9, 2), ...block(17, 9, 3)]).appeal, true);
-eq('Thu 1h -> current unmet', check(12, block(13, 9, 1)).unmet, ['current']);
+// Thursday: 4h this week, appeal for next week
+eq('Thu 3h -> current unmet', check(12, block(13, 9, 3)).unmet, ['current']);
+eq('Thu 4h -> nothing unmet', check(12, block(13, 9, 4)).unmet, []);
+eq('Thu 4h, next week 3h -> appeal', check(12, [...block(13, 9, 4), ...block(17, 9, 3)]).appeal, true);
 // picks count as availability
-eq('Thu 1h + a 1h pick -> ok', check(12, block(13, 9, 1), [{ start: at(13, 12), minutes: 60 }]).unmet, []);
-// Friday: 2h this week AND 4h next week required
-eq('Fri 2h this week, 0 next -> next unmet', check(13, block(13, 18, 2)).unmet, ['next']);
-eq('Fri needs both', check(13, [...block(13, 18, 2), ...block(16, 9, 4)]).unmet, []);
+eq('Thu 3h + a 1h pick -> ok', check(12, block(13, 9, 3), [{ start: at(13, 13), minutes: 60 }]).unmet, []);
+// Friday: the current week is ignored, 4h next week required
+eq('Fri 0h today, 3h next week -> next unmet', check(13, block(17, 9, 3)).unmet, ['next']);
+eq('Fri 4h next week -> ok', check(13, block(17, 9, 4)).unmet, []);
+eq('Fri time on the same day does not count', check(13, block(13, 18, 2)).unmet, ['next']);
 // Saturday / Sunday: only next week, 4h
 eq('Sat 3h next week -> next unmet', check(14, block(16, 9, 3)).unmet, ['next']);
 eq('Sat 4h next week -> ok', check(14, block(16, 9, 4)).unmet, []);
+// Fri-Sun: only the minimum next week -> still the polite appeal
+eq('Fri exactly 4h next week -> appeal', check(13, block(17, 9, 4)).appeal, true);
+eq('Sat exactly 4h next week -> appeal', check(14, block(16, 9, 4)).appeal, true);
+eq('Sun 5h next week -> no appeal (min + 1h reached)', check(15, block(16, 9, 5)).appeal, false);
+eq('Fri 6h next week -> no appeal', check(13, block(17, 9, 6)).appeal, false);
+eq('Fri 3h next week -> need, not appeal', check(13, block(17, 9, 3)).appeal, false);
 // a requirement is never higher than the time that can still be marked
-const late = W.checkWeeks(TZ, [], [], LEAD, at(13, 19)); // Fri 7 pm: nothing left this week
-eq('Fri 7pm: current need shrinks to what is left', [late.current.min, late.current.need], [120, 0]);
+eq('Thu 7pm: Friday still gives room, need stays 4h', W.checkWeeks(TZ, [], [], LEAD, at(12, 19)).current.need, 240);
 
 // dashboard statuses
 const row = (o) => ({ has_unseen_change: false, slot_count: 0, ranked_count: 0, suggested_count: 0, upcoming_slots: [], upcoming_picks: [], ...o });
@@ -55,7 +61,7 @@ eq('suggestions, no picks, but shared availability earlier -> still waiting for 
 eq('nothing at all', st({}), 'Waiting for availability');
 eq('answered, 4h this week -> up to date', st({ slot_count: 16, upcoming_slots: iso(block(10, 9, 4)) }), 'Up to date');
 eq('answered, 3h on a Monday -> few', st({ slot_count: 12, upcoming_slots: iso(block(10, 9, 3)) }), 'Few valid times this week');
-eq('answered, 2h on a Thursday -> up to date (bar is 2h)', st({ slot_count: 8, upcoming_slots: iso(block(13, 9, 2)) }, 12), 'Up to date');
+eq('answered, 3h on a Thursday -> few (bar is 4h)', st({ slot_count: 12, upcoming_slots: iso(block(13, 9, 3)) }, 12), 'Few valid times this week');
 eq('answered, 0 valid -> none', st({ slot_count: 8, upcoming_slots: iso(block(17, 9, 2)) }), 'No valid times this week');
 eq('picked something, suggestions exist -> judged on valid time', st({ suggested_count: 2, ranked_count: 1, upcoming_picks: [{ start: new Date(at(10, 9)).toISOString(), minutes: 240 }] }), 'Up to date');
 

@@ -1,9 +1,4 @@
-import {
-  MIN_MINUTES_MON_WED,
-  MIN_MINUTES_NEXT_WEEK,
-  MIN_MINUTES_THU_FRI,
-  NEAR_MINIMUM_EXTRA_MINUTES,
-} from './statusConfig.ts';
+import { MIN_MINUTES_NEXT_WEEK, MIN_MINUTES_THIS_WEEK, NEAR_MINIMUM_EXTRA_MINUTES } from './statusConfig.ts';
 import { ROWS, SLOT_MS, addDays, mondayOf, slotInstantFor, todayIn, zonedToUtc, type CalDate } from './time.ts';
 
 export interface Pick {
@@ -12,7 +7,7 @@ export interface Pick {
 }
 
 export interface WeekRequirements {
-  /** The week we are in (Mon-Fri). null on Saturday and Sunday: that week is over. */
+  /** The week we are in (Mon-Fri). null from Friday on: interviews are rarely booked the same day, so only next week counts. */
   current: { mon: CalDate; min: number } | null;
   /** The coming week. `required` on Friday, Saturday and Sunday; otherwise only asked for politely. */
   next: { mon: CalDate; min: number; required: boolean };
@@ -20,19 +15,18 @@ export interface WeekRequirements {
 
 /**
  * Which weeks need how much, from today's weekday in `tz`.
- * Monday to Wednesday: this week 4 h. Thursday and Friday: this week 2 h. Friday, Saturday, Sunday: next week 4 h
- * is required. On Saturday and Sunday the current week is over, so only next week counts.
+ * Monday to Thursday: this week 4 h (next week is only asked for politely). Friday, Saturday, Sunday: next week
+ * 4 h is required and the current week is not asked for at all.
  */
 export function weekRequirements(tz: string, now = Date.now()): WeekRequirements {
   const today = todayIn(tz, now);
   const dow = new Date(Date.UTC(today.y, today.m - 1, today.d)).getUTCDay(); // 0 Sun .. 6 Sat
   const thisMon = mondayOf(today);
   const nextMon = addDays(thisMon, 7);
-  if (dow === 0 || dow === 6) return { current: null, next: { mon: nextMon, min: MIN_MINUTES_NEXT_WEEK, required: true } };
-  const early = dow <= 3; // Mon, Tue, Wed
+  if (dow === 0 || dow === 5 || dow === 6) return { current: null, next: { mon: nextMon, min: MIN_MINUTES_NEXT_WEEK, required: true } };
   return {
-    current: { mon: thisMon, min: early ? MIN_MINUTES_MON_WED : MIN_MINUTES_THU_FRI },
-    next: { mon: nextMon, min: MIN_MINUTES_NEXT_WEEK, required: dow === 5 },
+    current: { mon: thisMon, min: MIN_MINUTES_THIS_WEEK },
+    next: { mon: nextMon, min: MIN_MINUTES_NEXT_WEEK, required: false },
   };
 }
 
@@ -73,7 +67,7 @@ export interface WeeklyCheck {
   next: WeekStatus;
   /** Weeks that are required and not yet met. Empty = the candidate may finish. */
   unmet: ('current' | 'next')[];
-  /** Everything required is met, but only barely, and next week is thin: ask politely for more. */
+  /** Everything required is met, but only barely: ask politely for more next week. */
   appeal: boolean;
 }
 
@@ -98,7 +92,11 @@ export function checkWeeks(tz: string, slots: Iterable<number>, picks: Pick[], l
   const unmet: ('current' | 'next')[] = [];
   if (current && current.have < current.need) unmet.push('current');
   if (next.required && next.have < next.need) unmet.push('next');
-  const barelyThere = current !== null && current.have < current.need + NEAR_MINIMUM_EXTRA_MINUTES;
-  const appeal = unmet.length === 0 && !next.required && barelyThere && next.have < next.need;
+  // Mon-Thu: only the minimum this week and next week still thin. Fri-Sun: only the minimum for next week.
+  const appeal =
+    unmet.length === 0 &&
+    (current !== null
+      ? current.have < current.need + NEAR_MINIMUM_EXTRA_MINUTES && next.have < next.need
+      : next.have < next.need + NEAR_MINIMUM_EXTRA_MINUTES);
   return { current, next, unmet, appeal };
 }
