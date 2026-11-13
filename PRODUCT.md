@@ -48,8 +48,10 @@ Constraints:
 - Candidate side collects only availability and time zone, no name, email, or account.
 - Backend access only through Postgres functions; tables are closed to direct access.
 
+Ownership:
+- The Vercel and Supabase accounts are owned by the Talent Acquisition team account, not by one person.
+
 Undecided:
-- Who owns the Supabase project at Degreed (it should be a company account, not one person's).
 - Whether to add Degreed single sign-on later.
 
 ## Brand Commitments

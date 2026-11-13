@@ -61,7 +61,7 @@ Only needed when setting up a new database or changing the schema:
 
 3. Copy the **Project URL** and **anon public** key from **Project Settings > API** into the Vercel variables above, then redeploy.
 
-The Supabase project should be owned by a Degreed account (not one person's), so the tool does not depend on one person leaving again.
+The Vercel and Supabase accounts are owned by the Talent Acquisition team account (not one person's), so the tool does not depend on one person leaving again. Keep it that way.
 
 ### Check it works
 
