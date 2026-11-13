@@ -1,6 +1,7 @@
 import type { LinkRow, ManagerLinkData, SuggestedSlot } from './types';
 import type { Status } from '../components/ui';
 import { coveredMinutes, weekBounds, weekRequirements } from './weeklyMinimum.ts';
+import { MIN_MINUTES_THU, NEAR_MINIMUM_EXTRA_MINUTES } from './statusConfig.ts';
 
 /** What the status rules need. A dashboard LinkRow already has all of it. */
 export type StatusInput = Pick<LinkRow, 'has_unseen_change' | 'slot_count' | 'ranked_count' | 'suggested_count' | 'upcoming_slots' | 'upcoming_picks'>;
@@ -19,12 +20,24 @@ export function statusInputFromLink(d: ManagerLinkData): StatusInput {
   };
 }
 
-/** The week the dashboard judges, and the bar for "few": this week Monday to Thursday, the coming week from Friday on (same as the candidate page). */
-export function statusTarget(tz: string, now = Date.now()): { from: number; to: number; min: number; nextWeek: boolean } {
+/**
+ * The week the dashboard judges and when it counts as "few": this week Monday to Thursday, the coming week
+ * from Friday on (same week as the candidate page).
+ *  - Mon-Wed: fewer than the 4 h minimum.
+ *  - Thu: fewer than 3 h (the 2 h minimum, or a little more, is still "few").
+ *  - Fri-Sun: 5 h or less next week (the 4 h minimum plus up to an hour more); more than 5 h is up to date.
+ */
+export function statusTarget(tz: string, now = Date.now()): { from: number; to: number; nextWeek: boolean; isFew: (minutes: number) => boolean } {
   const req = weekRequirements(tz, now);
   const w = req.current ?? req.next; // from Friday on there is no current week: judge the coming one
   const [from, to] = weekBounds(w.mon, tz);
-  return { from, to, min: w.min, nextWeek: req.current === null };
+  const nextWeek = req.current === null;
+  const isFew = nextWeek
+    ? (m: number) => m <= w.min + NEAR_MINIMUM_EXTRA_MINUTES
+    : w.min === MIN_MINUTES_THU
+      ? (m: number) => m < w.min + NEAR_MINIMUM_EXTRA_MINUTES
+      : (m: number) => m < w.min;
+  return { from, to, nextWeek, isFew };
 }
 
 /** Minutes of valid time in the judged week: free blocks + picks that start in the future. Overlaps count once. */
@@ -46,7 +59,7 @@ export function linkStatus(l: StatusInput, tz: string, now = Date.now()): Status
   const mins = validMinutes(l, tz, now);
   const target = statusTarget(tz, now);
   if (mins === 0) return target.nextWeek ? 'No valid times next week' : 'No valid times this week';
-  if (mins < target.min) return target.nextWeek ? 'Few valid times next week' : 'Few valid times this week';
+  if (target.isFew(mins)) return target.nextWeek ? 'Few valid times next week' : 'Few valid times this week';
   return 'Up to date';
 }
 
