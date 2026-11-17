@@ -4,7 +4,7 @@ A rebuild of the interview-availability tool. A recruiter creates a private link
 
 - **Recruiter side** (`/`): sign in with a shared team passcode, create links (one or a batch of up to 25), give each a private label, see which links changed since you last looked, suggest specific interview times, copy a day-by-day summary for email.
 - **Candidate side** (`/<code>`): no login. Marks free time over the next 30 days (Monday to Friday only), types a city or time zone, ranks any times the recruiter suggested, and can tick whole days (or a whole week) as **Unavailable**. Saves automatically. Can come back to the same link. Anything less than 3 hours from now is greyed out.
-- **Recruiter link view** (`/<code>/recruiter`): the same candidate, read-only, in the recruiter's time zone.
+- **Recruiter link view** (`/<code>/recruiter`): the same candidate, read-only, in the recruiter's time zone. The calendar there covers the whole day and scrolls (it opens at 6 AM), because a candidate's evening can land late at night, or on the next day, in the recruiter's zone.
 
 Links expire after 90 days, or sooner if a recruiter deactivates them. The candidate side stores only availability and time zone.
 
