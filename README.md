@@ -1,6 +1,6 @@
 # QuickSlot
 
-A rebuild of the interview-availability tool that was originally made in Lovable. A recruiter creates a private link, sends it to a candidate, and the candidate marks when they are free. The recruiter reads it in their own time zone.
+A rebuild of the interview-availability tool. A recruiter creates a private link, sends it to a candidate, and the candidate marks when they are free. The recruiter reads it in their own time zone.
 
 - **Recruiter side** (`/`): sign in with a shared team passcode, create links (one or a batch of up to 25), give each a private label, see which links changed since you last looked, suggest specific interview times, copy a day-by-day summary for email.
 - **Candidate side** (`/<code>`): no login. Marks free time over the next 30 days (Monday to Friday only), types a city or time zone, ranks any times the recruiter suggested, and can tick whole days (or a whole week) as **Unavailable**. Saves automatically. Can come back to the same link. Anything less than 3 hours from now is greyed out.
