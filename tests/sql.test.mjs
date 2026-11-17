@@ -181,6 +181,55 @@ ok('new candidate edit re-flags', ov.links.find((l) => l.token === tokA).has_uns
   ok('clearing all suggestions works', (await q(`select jsonb_array_length(suggested_slots) as n from public.links where token = $1`, [clearTok]))[0].n === 0);
 }
 
+// the candidate's own free blocks go the same way once their time has passed
+{
+  const tok = (await q(`select public.manager_create_links($1, 1, '{}') as r`, [SES2]))[0].r.links[0].token;
+  const past = new Date(Math.floor((Date.now() - 2 * 3600e3) / 900000) * 900000).toISOString();
+  const justGone = new Date(Math.floor((Date.now() - 60e3) / 900000) * 900000).toISOString();
+  const future = new Date(Math.ceil((Date.now() + 5 * 86400e3) / 900000) * 900000).toISOString();
+  const set = async () => q(`update public.links set slots = $2::timestamptz[], updated_at = '2020-01-01', candidate_updated_at = '2020-01-01' where token = $1`,
+    [tok, [past, justGone, future]]);
+
+  await set();
+  const cg = (await q(`select public.get_link($1) as r`, [tok]))[0].r;
+  ok('candidate no longer sees blocks that have started', cg.slots.length === 1 && Date.parse(cg.slots[0]) === Date.parse(future), JSON.stringify(cg.slots));
+  ok('clearing past blocks is not a candidate update', new Date(cg.updated_at).getUTCFullYear() === 2020, cg.updated_at);
+
+  await set();
+  const mg = (await q(`select public.manager_get_link($1, $2, false) as r`, [SES2, tok]))[0].r;
+  ok('recruiter link view drops past blocks too', mg.slots.length === 1, JSON.stringify(mg.slots));
+
+  await set();
+  const orow = (await q(`select public.manager_overview($1) as r`, [SES2]))[0].r.links.find((l) => l.token === tok);
+  ok('dashboard slot_count ignores past blocks', orow.slot_count === 1, String(orow.slot_count));
+
+  await set();
+  await q(`select public._prune_past()`);
+  ok('the scheduled prune deletes them without anyone opening the link',
+    (await q(`select cardinality(slots) as n from public.links where token = $1`, [tok]))[0].n === 1);
+  // a link with nothing in the past is left alone
+  await q(`update public.links set slots = $2::timestamptz[] where token = $1`, [tok, [future]]);
+  await q(`select public._prune_past()`);
+  ok('future blocks are untouched', (await q(`select cardinality(slots) as n from public.links where token = $1`, [tok]))[0].n === 1);
+}
+
+// a pick whose time has passed drops out and the next one moves up to first
+{
+  const tok = (await q(`select public.manager_create_links($1, 1, '{}') as r`, [SES2]))[0].r.links[0].token;
+  const gone = new Date(Math.floor((Date.now() - 30 * 60e3) / 900000) * 900000).toISOString();
+  const soon = new Date(Math.ceil((Date.now() + 2 * 86400e3) / 900000) * 900000).toISOString();
+  const later = new Date(Math.ceil((Date.now() + 3 * 86400e3) / 900000) * 900000).toISOString();
+  // the recruiter suggested three times; the candidate ranked the one that has now passed first
+  await q(`update public.links set suggested_slots = $2::jsonb, ranked_choices = $3::timestamptz[] where token = $1`,
+    [tok, JSON.stringify([gone, soon, later].map((start) => ({ start, minutes: 30 }))), [gone, soon]]);
+  const g = (await q(`select public.get_link($1) as r`, [tok]))[0].r;
+  ok('the suggestion that has started is gone', g.suggested_slots.length === 2 && !g.suggested_slots.some((x) => Date.parse(x.start) === Date.parse(gone)), JSON.stringify(g.suggested_slots));
+  ok('the pick on it is gone too', g.ranked_choices.length === 1, JSON.stringify(g.ranked_choices));
+  ok('the second choice becomes the first', Date.parse(g.ranked_choices[0]) === Date.parse(soon), JSON.stringify(g.ranked_choices));
+  const mg = (await q(`select public.manager_get_link($1, $2, false) as r`, [SES2, tok]))[0].r;
+  ok('the recruiter sees the same single first choice', mg.ranked_choices.length === 1 && Date.parse(mg.ranked_choices[0]) === Date.parse(soon), JSON.stringify(mg.ranked_choices));
+}
+
 // suggestions + batch edit + ranking
 const batchToks = many.links.map((l) => l.token);
 const sugg = JSON.stringify([{ start: iso(24 * 60), minutes: 45 }, { start: iso(24 * 60 + 60), minutes: 30 }, { start: iso(5) }]);

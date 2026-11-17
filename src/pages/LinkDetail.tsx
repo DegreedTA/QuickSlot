@@ -245,7 +245,12 @@ function updatedText(ts: number, tz: string, verb: 'Updated' | 'Created') {
 function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Promise<void> }) {
   const { zone, setZone } = useSession();
   const sug = useSuggestions(data, reload);
-  const slots = useMemo(() => new Set(data.slots.map((s) => Date.parse(s))), [data.slots]);
+  // The database drops blocks that have started on the next read; drop them here too, so the grid
+  // and the per-week totals never show time that is already gone.
+  const slots = useMemo(() => {
+    const now = Date.now();
+    return new Set(data.slots.map((s) => Date.parse(s)).filter((t) => t > now));
+  }, [data.slots]);
   const slotArray = useMemo(() => [...slots], [slots]);
   const suggestions: Suggestion[] = useMemo(
     () => sug.visible.map((s) => ({ start: Date.parse(s.start), minutes: s.minutes })),
@@ -263,7 +268,13 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
     if (single && hit) sug.remove(hit.start, zone);
     else setPending({ from, to });
   }
-  const rankedMs = useMemo(() => data.ranked_choices.map((s) => Date.parse(s)), [data.ranked_choices]);
+  // A pick lives only as long as the suggestion it points at, and `visible` drops those whose time
+  // has passed. So once the first choice has started, the second one becomes the first, here and in
+  // the database alike, without waiting for a reload.
+  const rankedMs = useMemo(() => {
+    const live = new Set(sug.visible.map((x) => Date.parse(x.start)));
+    return data.ranked_choices.map((s) => Date.parse(s)).filter((t) => live.has(t));
+  }, [data.ranked_choices, sug.visible]);
   const ranks = useMemo(() => new Map(rankedMs.map((t, i) => [t, i + 1])), [rankedMs]);
   const expired = data.status === 'expired';
   // only the candidate's changes count as an update; before they save anything it shows when the link was created

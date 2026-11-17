@@ -129,7 +129,11 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
   const [tzChosen, setTzChosen] = useState(returning);
   const locked = !tzChosen;
   const [tz, setTz] = useState(() => (returning ? data.timezone : browserZone()));
-  const [slots, setSlots] = useState<Set<number>>(() => new Set(data.slots.map((s) => Date.parse(s))));
+  // Blocks whose time has passed are deleted by the server; leave them out here as well, so the
+  // calendar never shows a mark the recruiter can no longer see.
+  const [slots, setSlots] = useState<Set<number>>(
+    () => new Set(data.slots.map((s) => Date.parse(s)).filter((t) => t > Date.now())),
+  );
   const [offDays, setOffDays] = useState<string[]>(() => data.unavailable_days ?? []);
   const [ranked, setRanked] = useState<number[]>(() => data.ranked_choices.map((s) => Date.parse(s)));
   const [weekIdx, setWeekIdx] = useState(0);
@@ -162,7 +166,12 @@ function CandidateView({ token, data }: { token: string; data: CandidateLinkData
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data.suggested_slots, tick],
   );
-  const ranks = useMemo(() => new Map(ranked.map((t, i) => [t, i + 1])), [ranked]);
+  // Numbered by position among the picks still on offer: when the first choice's time passes, the
+  // second takes its place, the same way the database renumbers them.
+  const ranks = useMemo(() => {
+    const live = new Set(suggestions.map((s) => s.start));
+    return new Map(ranked.filter((t) => live.has(t)).map((t, i) => [t, i + 1]));
+  }, [ranked, suggestions]);
 
   const runSave = useCallback(
     async (which: 'avail' | 'rank') => {
