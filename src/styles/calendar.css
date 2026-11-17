@@ -208,20 +208,12 @@
   padding-bottom: 12px;
   user-select: none;
 }
-/*
- * The recruiter's grid covers the whole day but keeps the usual height, so it scrolls. `direction`
- * is flipped on the scroller alone (and back on the grid inside) to put the bar on the left, beside
- * the hour labels, where it does not sit over Friday's column.
- */
+/* The recruiter's grid covers the whole day but keeps the usual height, so it scrolls. */
 .rc-scroll.is-scroll {
   overflow-y: auto;
   overscroll-behavior: contain;
-  direction: rtl;
   scrollbar-width: thin;
   scrollbar-color: #c7cfdb transparent;
-}
-.rc-scroll.is-scroll > .rc-body {
-  direction: ltr;
 }
 .rc-scroll.is-scroll::-webkit-scrollbar {
   width: 6px;
