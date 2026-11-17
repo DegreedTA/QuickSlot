@@ -12,7 +12,7 @@ Links expire after 90 days, or sooner if a recruiter deactivates them. The candi
 
 | Part | Where | Address |
 | --- | --- | --- |
-| Website (static files) | Vercel | https://quickslot.degreedlabs.com (also https://quickslot-degreed.vercel.app) |
+| Website (static files) | Vercel | https://quickslot.degreedlabs.com |
 | Code | GitHub | https://github.com/DegreedTA/QuickSlot |
 | Database | Supabase | - |
 
