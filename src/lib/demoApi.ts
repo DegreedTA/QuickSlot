@@ -204,14 +204,19 @@ const cleanDays = (days: string[], tz: string): string[] => {
 /** The calendar date an instant falls on, in `tz`. */
 const dayOf = (iso: string, tz: string): string => calKey(partsInZone(Date.parse(iso), tz));
 
-/** Same as _prune_past() in schema.sql: past suggested times (and picks of them) are deleted, silently. */
+/**
+ * Same as _prune_past() in schema.sql: the candidate's free blocks, the suggested times and the
+ * picks of them are deleted once they have started, silently (updated_at is left alone).
+ */
 function prune(s: Store) {
   const now = Date.now();
   let changed = false;
   for (const r of s.rows) {
+    const sl = r.slots.filter((x) => Date.parse(x) > now);
     const sg = r.suggested_slots.filter((x) => Date.parse(x.start) > now);
     const rk = r.ranked_choices.filter((x) => Date.parse(x) > now);
-    if (sg.length !== r.suggested_slots.length || rk.length !== r.ranked_choices.length) {
+    if (sl.length !== r.slots.length || sg.length !== r.suggested_slots.length || rk.length !== r.ranked_choices.length) {
+      r.slots = sl;
       r.suggested_slots = sg;
       r.ranked_choices = rk;
       changed = true;

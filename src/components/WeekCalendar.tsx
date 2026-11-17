@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { Check, Minus, Prohibit } from '@phosphor-icons/react';
 import { Tooltip } from './ui';
-import { COLUMN_PX, HOUR_PX, PX_PER_15, gridBackground, heightOf, rowAtY, topOf } from '../lib/calendarGeometry';
+import { HOUR_PX, PX_PER_15, columnPx, gridBackground, heightOf, rowAtY, topOf } from '../lib/calendarGeometry';
 import {
+  DAY_END_HOUR,
   DAY_START_HOUR,
-  ROWS,
   SLOT_MS,
   SLOTS_PER_HOUR,
   addDays,
@@ -57,12 +57,18 @@ interface Props {
   /** No shadow, for use inside another card. */
   flat?: boolean;
   label: string;
+  /**
+   * The hours the grid draws. The candidate keeps the default 6 AM to 9 PM, which is also what they
+   * may mark. The recruiter draws the whole day (0 to 24) and scrolls, because the candidate's
+   * evening can land anywhere in the recruiter's own day.
+   */
+  startHour?: number;
+  endHour?: number;
 }
 
-const hourLabels = Array.from({ length: ROWS / SLOTS_PER_HOUR }, (_, i) => {
-  const h = DAY_START_HOUR + i;
-  return `${h % 12 === 0 ? 12 : h % 12} ${h >= 12 ? 'PM' : 'AM'}`;
-});
+const hourLabel = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h >= 12 && h < 24 ? 'PM' : 'AM'}`;
+/** Rows in the default range; a taller grid is capped to this height and scrolls. */
+const VIEW_ROWS = (DAY_END_HOUR - DAY_START_HOUR) * SLOTS_PER_HOUR;
 
 /** "2:15 – 3:15 PM" */
 const span = (from: number, to: number, tz: string) => {
@@ -96,6 +102,8 @@ export function WeekCalendar({
   paintMode = false,
   flat = false,
   label,
+  startHour = DAY_START_HOUR,
+  endHour = DAY_END_HOUR,
 }: Props) {
   const mode = onChange ? 'edit' : onSuggestRange ? 'suggest' : 'view';
   const dragging = useRef<{ c: number; r0: number } | null>(null);
@@ -106,13 +114,25 @@ export function WeekCalendar({
   const [announce, setAnnounce] = useState('');
   const bodyEl = useRef<HTMLDivElement>(null);
   const cursorEl = useRef<HTMLDivElement>(null);
+  const scrollEl = useRef<HTMLDivElement>(null);
+
+  const rows = (endHour - startHour) * SLOTS_PER_HOUR;
+  const colPx = columnPx(rows);
+  const scrolls = rows > VIEW_ROWS; // the whole day does not fit: show the usual height and scroll
+  const hourLabels = useMemo(
+    () => Array.from({ length: endHour - startHour }, (_, i) => hourLabel(startHour + i)),
+    [startHour, endHour],
+  );
 
   const days = useMemo(() => Array.from({ length: 5 }, (_, c) => addDays(weekStart, c)), [weekStart]);
   // instants[c][r]: start of each 15 minute row in each day column
-  const instants = useMemo(() => days.map((d) => Array.from({ length: ROWS }, (_, r) => slotInstantFor(d, r, tz))), [days, tz]);
+  const instants = useMemo(
+    () => days.map((d) => Array.from({ length: rows }, (_, r) => slotInstantFor(d, r, tz, startHour))),
+    [days, tz, rows, startHour],
+  );
   // usable rows per column are [firstRow, endRow)
-  const firstRow = useMemo(() => instants.map((col) => { const r = col.findIndex((t) => t >= windowStart); return r === -1 ? ROWS : r; }), [instants, windowStart]);
-  const endRow = useMemo(() => instants.map((col) => { const r = col.findIndex((t) => t >= windowEnd); return r === -1 ? ROWS : r; }), [instants, windowEnd]);
+  const firstRow = useMemo(() => instants.map((col) => { const r = col.findIndex((t) => t >= windowStart); return r === -1 ? rows : r; }), [instants, windowStart, rows]);
+  const endRow = useMemo(() => instants.map((col) => { const r = col.findIndex((t) => t >= windowEnd); return r === -1 ? rows : r; }), [instants, windowEnd, rows]);
   const usable = (c: number, r: number) => r >= firstRow[c] && r < endRow[c];
 
   // continuous runs of free blocks per column
@@ -134,7 +154,7 @@ export function WeekCalendar({
   const marks = useMemo(() => {
     const byCol: { s: Suggestion; r: number; rank?: number }[][] = days.map(() => []);
     for (const s of suggestions) {
-      const c = instants.findIndex((col) => s.start >= col[0] && s.start < col[ROWS - 1] + SLOT_MS);
+      const c = instants.findIndex((col) => s.start >= col[0] && s.start < col[rows - 1] + SLOT_MS);
       if (c < 0) continue;
       byCol[c].push({ s, r: (s.start - instants[c][0]) / SLOT_MS, rank: ranks.get(s.start) });
     }
@@ -173,7 +193,7 @@ export function WeekCalendar({
     [instants, offRanges],
   );
   /** A column reads as unavailable only when every visible row is (always true in the same zone). */
-  const colOff = useMemo(() => offRuns.map((runs) => runs.length === 1 && runs[0].r === 0 && runs[0].len === ROWS), [offRuns]);
+  const colOff = useMemo(() => offRuns.map((runs) => runs.length === 1 && runs[0].r === 0 && runs[0].len === rows), [offRuns, rows]);
 
   // The checkbox row: one per day plus one for the week. A day can be toggled while it still has a
   // row that could be marked; that also disables the whole row while the page is locked.
@@ -200,15 +220,15 @@ export function WeekCalendar({
   }
 
   const colEl = useRef<(HTMLDivElement | null)[]>([]);
-  const rowFromEvent = (c: number, e: { clientY: number }) => rowAtY(e.clientY - colEl.current[c]!.getBoundingClientRect().top);
+  const rowFromEvent = (c: number, e: { clientY: number }) => rowAtY(e.clientY - colEl.current[c]!.getBoundingClientRect().top, rows);
 
   /** The (column, row) under a screen point, or null when it is outside the day columns. */
   function cellAt(x: number, y: number): { c: number; r: number } | null {
     for (let c = 0; c < days.length; c++) {
       const box = colEl.current[c]?.getBoundingClientRect();
       if (!box || x < box.left || x >= box.right) continue;
-      if (y < box.top || y >= box.top + COLUMN_PX) return null;
-      return { c, r: rowAtY(y - box.top) };
+      if (y < box.top || y >= box.top + colPx) return null;
+      return { c, r: rowAtY(y - box.top, rows) };
     }
     return null;
   }
@@ -308,12 +328,12 @@ export function WeekCalendar({
     if (mode !== 'edit') return;
     const cur = cursor ?? startCell();
     let { c, r } = cur;
-    if (e.key === 'ArrowDown') r = Math.min(ROWS - 1, r + 1);
+    if (e.key === 'ArrowDown') r = Math.min(rows - 1, r + 1);
     else if (e.key === 'ArrowUp') r = Math.max(0, r - 1);
     else if (e.key === 'ArrowRight') c = Math.min(days.length - 1, c + 1);
     else if (e.key === 'ArrowLeft') c = Math.max(0, c - 1);
     else if (e.key === 'Home') r = 0;
-    else if (e.key === 'End') r = ROWS - 1;
+    else if (e.key === 'End') r = rows - 1;
     else if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault();
       const t = instants[c][r];
@@ -340,11 +360,16 @@ export function WeekCalendar({
   }
   function startCell() {
     const c = Math.max(0, endRow.findIndex((end, i) => end > firstRow[i]));
-    return { c, r: Math.min(ROWS - 1, Math.max(firstRow[c], 8)) };
+    return { c, r: Math.min(rows - 1, Math.max(firstRow[c], 8)) };
   }
   useEffect(() => {
     cursorEl.current?.scrollIntoView?.({ block: 'nearest' });
   }, [cursor]);
+
+  // A scrolling grid opens on the hours people actually use, with the rest a scroll away.
+  useEffect(() => {
+    if (scrollEl.current && scrolls) scrollEl.current.scrollTop = (DAY_START_HOUR - startHour) * HOUR_PX;
+  }, [scrolls, startHour]);
 
   function capture(e: PointerEvent<HTMLDivElement>) {
     try {
@@ -413,6 +438,7 @@ export function WeekCalendar({
           ))}
         </div>
       )}
+      <div className={`rc-scroll${scrolls ? ' is-scroll' : ''}`} ref={scrollEl} style={scrolls ? { height: columnPx(VIEW_ROWS) } : undefined}>
       <div
         ref={bodyEl}
         className={`rc-body${live ? ' is-live' : ''}${mode === 'edit' && paintMode ? ' is-painting' : ''}`}
@@ -449,10 +475,10 @@ export function WeekCalendar({
               colEl.current[c] = el;
             }}
             className={`rc-col${c === days.length - 1 ? ' is-last' : ''}`}
-            style={{ height: COLUMN_PX, backgroundImage: gridBackground }}
+            style={{ height: colPx, backgroundImage: gridBackground }}
           >
-            {firstRow[c] > 0 && <div className="rc-past" style={{ top: 0, height: Math.min(firstRow[c], ROWS) * PX_PER_15 }} aria-hidden="true" />}
-            {endRow[c] < ROWS && <div className="rc-past" style={{ bottom: 0, height: (ROWS - Math.max(endRow[c], 0)) * PX_PER_15 }} aria-hidden="true" />}
+            {firstRow[c] > 0 && <div className="rc-past" style={{ top: 0, height: Math.min(firstRow[c], rows) * PX_PER_15 }} aria-hidden="true" />}
+            {endRow[c] < rows && <div className="rc-past" style={{ bottom: 0, height: (rows - Math.max(endRow[c], 0)) * PX_PER_15 }} aria-hidden="true" />}
 
             {/* Before the slots on purpose: the recruiter's suggestions stay on top and clickable. */}
             {offRuns[c].map(({ r, len }) => (
@@ -491,7 +517,7 @@ export function WeekCalendar({
               const end = s.start + s.minutes * 60000;
               const when = span(s.start, end, tz);
               const picked = rank != null;
-              const maxMin = ROWS * 15 - r * 15;
+              const maxMin = rows * 15 - r * 15;
               const box = { top: topOf(r * 15), height: heightOf(Math.min(s.minutes, maxMin)) };
               const badge = picked && <span className="rc-rank">{rank}</span>;
               if (mode === 'view') {
@@ -539,6 +565,7 @@ export function WeekCalendar({
             )}
           </div>
         ))}
+      </div>
       </div>
       <p className="sr-only" role="status" aria-live="polite">
         {announce}

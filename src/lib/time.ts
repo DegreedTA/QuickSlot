@@ -337,7 +337,11 @@ export function summaryText(starts: number[], tz: string, from?: number): string
   return `Availability (times in ${tzLabel(tz)})\n${lines.join('\n')}`;
 }
 
-export function slotInstantFor(cal: CalDate, row: number, tz: string): number {
-  const minutes = DAY_START_HOUR * 60 + row * (60 / SLOTS_PER_HOUR);
+/**
+ * The instant a calendar row starts. `startHour` is the hour the grid begins at: the candidate's
+ * grid starts at DAY_START_HOUR, while the recruiter's covers the whole day and starts at 0.
+ */
+export function slotInstantFor(cal: CalDate, row: number, tz: string, startHour = DAY_START_HOUR): number {
+  const minutes = startHour * 60 + row * (60 / SLOTS_PER_HOUR);
   return zonedToUtc(cal.y, cal.m, cal.d, Math.floor(minutes / 60), minutes % 60, tz);
 }

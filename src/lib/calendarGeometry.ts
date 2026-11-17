@@ -7,14 +7,16 @@ const COARSE = typeof window !== 'undefined' && typeof window.matchMedia === 'fu
 export const PX_PER_15 = COARSE ? 24 : 14; // desktop: 15 min = 14px, 30 min = 28px, 1 h = 56px
 export const HOUR_PX = PX_PER_15 * 4;
 export const PX_PER_MIN = HOUR_PX / 60;
-export const COLUMN_PX = ROWS * PX_PER_15; // 15 hours (6 AM to 9 PM) = 840px
+export const COLUMN_PX = ROWS * PX_PER_15; // the default 6 AM to 9 PM range = 840px
+/** Height of a day column drawing `rows` rows (the recruiter draws the whole day, so more of them). */
+export const columnPx = (rows: number) => rows * PX_PER_15;
 
 /** Top of a slot, given minutes after the first row. */
 export const topOf = (minutesFromStart: number) => minutesFromStart * PX_PER_MIN;
 /** Height of a slot; 1px less than its duration so grid lines and back-to-back slots stay visible. */
 export const heightOf = (minutes: number) => minutes * PX_PER_MIN - 1;
 /** Pointer y (px from the top of the day column) -> 15 minute row, clamped to the column. */
-export const rowAtY = (y: number) => Math.min(ROWS - 1, Math.max(0, Math.floor(y / PX_PER_15)));
+export const rowAtY = (y: number, rows = ROWS) => Math.min(rows - 1, Math.max(0, Math.floor(y / PX_PER_15)));
 
 /** Grid lines: an hour line at the bottom of each band, a lighter half-hour line in the middle. */
 export const gridBackground = [

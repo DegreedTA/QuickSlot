@@ -4,7 +4,7 @@ A rebuild of the interview-availability tool. A recruiter creates a private link
 
 - **Recruiter side** (`/`): sign in with a shared team passcode, create links (one or a batch of up to 25), give each a private label, see which links changed since you last looked, suggest specific interview times, copy a day-by-day summary for email.
 - **Candidate side** (`/<code>`): no login. Marks free time over the next 30 days (Monday to Friday only), types a city or time zone, ranks any times the recruiter suggested, and can tick whole days (or a whole week) as **Unavailable**. Saves automatically. Can come back to the same link. Anything less than 3 hours from now is greyed out.
-- **Recruiter link view** (`/<code>/recruiter`): the same candidate, read-only, in the recruiter's time zone.
+- **Recruiter link view** (`/<code>/recruiter`): the same candidate, read-only, in the recruiter's time zone. The calendar there covers the whole day and scrolls (it opens at 6 AM), because a candidate's evening can land late at night, or on the next day, in the recruiter's zone.
 
 Links expire after 90 days, or sooner if a recruiter deactivates them. The candidate side stores only availability and time zone.
 
@@ -62,8 +62,9 @@ The Vercel and Supabase accounts are owned by the Talent Acquisition team accoun
 
 - Recruiters drag on the calendar in 15 minute steps, then choose the interview length. The interviews are laid back to back from the start of the range: 9:00 to 10:00 with 30 minutes gives two options (9:00 and 9:30), and 10:00 to 10:45 gives one (10:00). The candidate sees the suggestions grouped by day and ranks the ones they prefer; only the ones they rank are drawn on their calendar.
 - **Clear all** removes every suggested time on the link (or the whole batch).
-- Suggested times that have already started are deleted automatically. The database does this whenever a link or the dashboard is opened, and every 15 minutes on its own if the `pg_cron` extension is on (Supabase: Database > Extensions > pg_cron). `schema.sql` tries to turn it on and schedule the job; if it cannot, nothing breaks.
+- Anything whose time has already started is deleted automatically: the candidate's free blocks, the recruiter's suggested times, and the candidate's picks. When a picked time goes, the next choice moves up, so the second becomes the first. The database does this whenever a link or the dashboard is opened, and every 15 minutes on its own if the `pg_cron` extension is on (Supabase: Database > Extensions > pg_cron). `schema.sql` tries to turn it on and schedule the job; if it cannot, nothing breaks. None of this counts as a change by the candidate, so it never shows up as a "New update".
 - If the database was set up before this change, run the whole of `supabase/schema.sql` again in the SQL Editor. It is safe to re-run.
+- **Run `supabase/migrations/2026-11-17_prune_past_slots.sql` in the SQL Editor.** Until it runs, links keep showing the candidate's availability for days that have already gone by. It only replaces `_prune_past()`, so it is quick and safe to run at any time, before or after the site is deployed.
 - **Run `supabase/migrations/2026-11-13_unavailable_days.sql` in the SQL Editor BEFORE the site that uses it is deployed.** Order matters here. The new `p_unavailable_days` argument has a default, so running the migration first leaves the site that is already live working exactly as it did; deploying the site first would instead break every candidate's save until the migration lands. Running the whole of `supabase/schema.sql` again does the same thing and is also safe.
 - **Run `supabase/schema.sql` again before (or right when) this version goes live.** Recruiter sign-in now uses session tokens (`manager_login`), which the old database does not have. Until it is re-run, signing in fails. Re-running keeps all links and the passcode; everyone just signs in again once.
 

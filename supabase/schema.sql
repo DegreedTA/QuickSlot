@@ -149,16 +149,21 @@ as $$
   ) s
 $$;
 
--- Removes suggested times (and the candidate's ranked picks) that have already started.
--- It does not touch updated_at, so cleaning up never shows as a "new update".
--- Called by the read functions below, and every 15 minutes by pg_cron when that is enabled
--- (see the end of this file), so past times disappear even if nobody opens the link.
+-- Removes the candidate's free blocks, the suggested times and the candidate's ranked picks
+-- once they have started. It does not touch updated_at, so cleaning up never shows as a
+-- "new update". Called by the read functions below, and every 15 minutes by pg_cron when that is
+-- enabled (see the end of this file), so past times disappear even if nobody opens the link.
 create or replace function public._prune_past()
 returns void
 language sql security definer set search_path = public
 as $$
   update public.links l
-     set suggested_slots = coalesce((
+     set slots = coalesce((
+           select array_agg(t order by t)
+             from unnest(l.slots) t
+            where t > now()
+         ), '{}'),
+         suggested_slots = coalesce((
            select jsonb_agg(x order by (x->>'start')::timestamptz)
              from jsonb_array_elements(l.suggested_slots) x
             where (x->>'start')::timestamptz > now()
@@ -168,7 +173,8 @@ as $$
              from unnest(l.ranked_choices) with ordinality as u(c, ord)
             where c > now()
          ), '{}')
-   where exists (select 1 from jsonb_array_elements(l.suggested_slots) x where (x->>'start')::timestamptz <= now())
+   where exists (select 1 from unnest(l.slots) t where t <= now())
+      or exists (select 1 from jsonb_array_elements(l.suggested_slots) x where (x->>'start')::timestamptz <= now())
       or exists (select 1 from unnest(l.ranked_choices) c where c <= now())
 $$;
 

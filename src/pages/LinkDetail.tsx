@@ -15,7 +15,6 @@ import { linkStatus, statusInputFromLink } from '../lib/linkStatus';
 import {
   LEAD_MINUTES,
   LEAD_MS,
-  ROWS,
   SLOT_MS,
   WINDOW_DAYS,
   addDays,
@@ -29,7 +28,6 @@ import {
   summaryText,
   isWeekend,
   mondayOf,
-  slotInstantFor,
   todayIn,
   tzLabel,
   zonedToUtc,
@@ -245,7 +243,12 @@ function updatedText(ts: number, tz: string, verb: 'Updated' | 'Created') {
 function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Promise<void> }) {
   const { zone, setZone } = useSession();
   const sug = useSuggestions(data, reload);
-  const slots = useMemo(() => new Set(data.slots.map((s) => Date.parse(s))), [data.slots]);
+  // The database drops blocks that have started on the next read; drop them here too, so the grid
+  // and the per-week totals never show time that is already gone.
+  const slots = useMemo(() => {
+    const now = Date.now();
+    return new Set(data.slots.map((s) => Date.parse(s)).filter((t) => t > now));
+  }, [data.slots]);
   const slotArray = useMemo(() => [...slots], [slots]);
   const suggestions: Suggestion[] = useMemo(
     () => sug.visible.map((s) => ({ start: Date.parse(s.start), minutes: s.minutes })),
@@ -263,7 +266,13 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
     if (single && hit) sug.remove(hit.start, zone);
     else setPending({ from, to });
   }
-  const rankedMs = useMemo(() => data.ranked_choices.map((s) => Date.parse(s)), [data.ranked_choices]);
+  // A pick lives only as long as the suggestion it points at, and `visible` drops those whose time
+  // has passed. So once the first choice has started, the second one becomes the first, here and in
+  // the database alike, without waiting for a reload.
+  const rankedMs = useMemo(() => {
+    const live = new Set(sug.visible.map((x) => Date.parse(x.start)));
+    return data.ranked_choices.map((s) => Date.parse(s)).filter((t) => live.has(t));
+  }, [data.ranked_choices, sug.visible]);
   const ranks = useMemo(() => new Map(rankedMs.map((t, i) => [t, i + 1])), [rankedMs]);
   const expired = data.status === 'expired';
   // only the candidate's changes count as an update; before they save anything it shows when the link was created
@@ -288,8 +297,10 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
   }, [zone, calKey(today), slotArray]);
 
   const hoursIn = (wk: CalDate) => {
-    const lo = slotInstantFor(wk, 0, zone);
-    const hi = slotInstantFor(addDays(wk, 4), ROWS - 1, zone) + SLOT_MS;
+    // midnight to midnight, Monday through Friday: the candidate's evening can land late in ours
+    const sat = addDays(wk, 5);
+    const lo = zonedToUtc(wk.y, wk.m, wk.d, 0, 0, zone);
+    const hi = zonedToUtc(sat.y, sat.m, sat.d, 0, 0, zone);
     return slotArray.filter((t) => t >= lo && t < hi && !isWeekend(t, zone)).length / 4;
   };
 
@@ -442,6 +453,8 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
             ranks={ranks}
             offDays={offDays}
             offDaysTz={data.timezone}
+            startHour={0}
+            endHour={24}
             label={`Candidate availability, ${formatCalShort(weekStart)} to ${formatCalShort(weekEnd)}, in ${tzLabel(zone)}`}
             windowStart={Math.ceil((now + LEAD_MS) / SLOT_MS) * SLOT_MS}
             onSuggestRange={expired ? undefined : onCalendarRange}
@@ -464,28 +477,13 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
         </section>
 
         <div className="side-col">
-          <Card className="side-card" aria-labelledby="sel-h">
+          <Card className="side-card" aria-labelledby="free-h">
             <div className="card-head">
-              <h2 id="sel-h">Selected times</h2>
+              <h2 id="free-h">Availability</h2>
               <CopyButton text={copyText} disabled={!picks.length && !freeGroups.length} className="ds-btn ds-btn-sm ds-btn-ghost">
                 Copy
               </CopyButton>
             </div>
-            {picks.length === 0 ? (
-              <p className="side-empty">{sug.visible.length ? 'No picks yet.' : 'None yet. Suggest times and the candidate can pick.'}</p>
-            ) : (
-              <ol className="pick-list">
-                {picks.map((p) => (
-                  <li key={p.t}>
-                    <span className="pick-n">{p.rank}</span>
-                    <span>
-                      {formatDayLong(p.t, zone)} · {rangeLabel(p.t, p.end, zone).replace('–', ' – ')}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-            <h3 className="also-free">Also free</h3>
             {freeGroups.length === 0 ? (
               <p className="side-empty">Nothing shared yet.</p>
             ) : (
@@ -504,7 +502,7 @@ function DetailBody({ data, reload }: { data: ManagerLinkData; reload: () => Pro
             )}
           </Card>
 
-          <SuggestedCard data={data} zone={zone} sug={sug} ranks={ranks} pickedCount={pickedCount} expired={expired} />
+          <SuggestedCard data={data} zone={zone} sug={sug} ranks={ranks} picks={picks} pickedCount={pickedCount} expired={expired} />
         </div>
       </div>
 
@@ -620,6 +618,7 @@ function SuggestedCard({
   zone,
   sug,
   ranks,
+  picks,
   pickedCount,
   expired,
 }: {
@@ -627,6 +626,7 @@ function SuggestedCard({
   zone: string;
   sug: ReturnType<typeof useSuggestions>;
   ranks: Map<number, number>;
+  picks: { t: number; rank: number; end: number }[];
   pickedCount: number;
   expired: boolean;
 }) {
@@ -676,6 +676,21 @@ function SuggestedCard({
           </>
         )}
       </p>
+      {picks.length > 0 && (
+        <>
+          <h3 className="side-sub">The candidate's choices</h3>
+          <ol className="pick-list">
+            {picks.map((p) => (
+              <li key={p.t}>
+                <span className="pick-n">{p.rank}</span>
+                <span>
+                  {formatDayLong(p.t, zone)} · {rangeLabel(p.t, p.end, zone).replace('–', ' – ')}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
       {!expired && (
         <div className="sug-actions" ref={wrap}>
           <Button size="md" variant="secondary" aria-haspopup="dialog" aria-expanded={adding} onClick={() => setAdding((a) => !a)}>
